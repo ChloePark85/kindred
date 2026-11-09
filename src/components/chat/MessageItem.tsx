@@ -43,12 +43,12 @@ export function MessageItem({ message, persona }: { message: Message; persona: P
 
   return (
     <li className="flex items-end gap-2">
-      <PartnerPhoto persona={persona} className="h-11 w-11 shrink-0 rounded-full" />
+      <PartnerPhoto persona={persona} small decorative className="h-11 w-11 shrink-0 rounded-full" />
       <div className="flex max-w-[80%] flex-col items-start gap-1">
         <div className="rounded-3xl rounded-bl-md border-2 border-[#f3d9df] bg-white px-5 py-3 text-lg shadow-sm">
           <p className="mb-1 flex flex-wrap items-center gap-2 text-base font-bold text-muted">
             <span>{label}</span>
-            <span className="rounded-full bg-[#2a1a1f] px-2 text-sm text-white">AI</span>
+            <span className="rounded-full bg-[#2a1a1f] px-2.5 py-0.5 text-base text-white">AI</span>
             <span className="sr-only">says:</span>
           </p>
           <p className="whitespace-pre-wrap break-words">{message.content}</p>

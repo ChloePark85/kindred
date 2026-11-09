@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { extractAndStoreMemories } from "@/lib/memories";
 import { loadVoiceUser } from "../voiceContext";
+import { requestedPartnerId } from "@/lib/partner";
 
 const BodySchema = z.object({
   transcript: z
@@ -13,17 +14,21 @@ const BodySchema = z.object({
  * and remembers anything new the user mentioned.
  */
 export async function POST(request: Request) {
-  const ctx = await loadVoiceUser();
+  const raw: unknown = await request.json().catch(() => null);
+  const ctx = await loadVoiceUser(requestedPartnerId(raw));
   if (!ctx) return Response.json({ error: "unauthorized" }, { status: 401 });
 
-  const parsed = BodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = BodySchema.safeParse(raw);
   if (!parsed.success) return Response.json({ error: "invalid_body" }, { status: 400 });
 
   const lines = parsed.data.transcript.filter((l) => l.text.length > 0);
   if (lines.length === 0) return Response.json({ saved: false });
 
   const { supabase, user, profile, persona, now } = ctx;
-  const content = lines.map((l) => `${l.role === "user" ? "You" : persona.name}: ${l.text}`).join("\n");
+  // One line per caption, so every line keeps its speaker label.
+  const content = lines
+    .map((l) => `${l.role === "user" ? "You" : persona.name}: ${l.text.replace(/\s*\n\s*/g, " ")}`)
+    .join("\n");
 
   const { data: message, error } = await supabase
     .from("messages")

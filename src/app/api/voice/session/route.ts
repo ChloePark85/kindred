@@ -1,5 +1,7 @@
 import { generateText } from "@/lib/claude";
 import { buildVoicePrompt, ELEVENLABS_API, loadVoiceUser } from "../voiceContext";
+import { requestedPartnerId } from "@/lib/partner";
+import { forSpeech } from "@/lib/speech";
 
 async function fetchSignedUrl(agentId: string, apiKey: string): Promise<string | null> {
   try {
@@ -19,11 +21,6 @@ async function fetchSignedUrl(agentId: string, apiKey: string): Promise<string |
   }
 }
 
-/** Emojis read badly aloud; drop them from a chat message used as a spoken line. */
-function forSpeech(text: string) {
-  return text.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s{2,}/g, " ").trim();
-}
-
 /**
  * POST /api/voice/session — everything the browser needs to start a call:
  * a signed ElevenLabs URL plus the persona prompt, opening line and voice to
@@ -32,28 +29,23 @@ function forSpeech(text: string) {
  * opening line.
  */
 export async function POST(request: Request) {
-  const ctx = await loadVoiceUser();
+  const body: unknown = await request.json().catch(() => null);
+  const ctx = await loadVoiceUser(requestedPartnerId(body));
   if (!ctx) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const agentId = process.env.ELEVENLABS_AGENT_ID;
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!agentId || !apiKey) return Response.json({ error: "not_configured" }, { status: 503 });
 
-  const body = (await request.json().catch(() => null)) as { incoming?: unknown } | null;
-  const incoming = body?.incoming === true;
+  const incoming = (body as { incoming?: unknown } | null)?.incoming === true;
 
   const { supabase, user, persona, profile, now } = ctx;
   const fallbackGreeting = `Hi ${profile.name}! It's ${persona.name} — so nice to hear your voice.`;
 
-  const [signedUrl, { prompt, memories }] = await Promise.all([
-    fetchSignedUrl(agentId, apiKey),
-    buildVoicePrompt(ctx),
-  ]);
-  if (!signedUrl) return Response.json({ error: "signed_url_failed" }, { status: 502 });
-
-  let firstMessage = fallbackGreeting;
-  if (incoming) {
-    const { data: reachOut } = await supabase
+  // The partner's latest "reach out" today becomes the opening line of an incoming call.
+  const latestReachOut = async () => {
+    if (!incoming) return "";
+    const { data } = await supabase
       .from("messages")
       .select("content")
       .eq("user_id", user.id)
@@ -63,9 +55,18 @@ export async function POST(request: Request) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const line = reachOut ? forSpeech(reachOut.content as string) : "";
-    if (line) return Response.json({ signedUrl, prompt, firstMessage: line, voiceId: persona.voiceId });
-  }
+    return data ? forSpeech(data.content as string) : "";
+  };
+
+  const [signedUrl, { prompt, memories }, incomingLine] = await Promise.all([
+    fetchSignedUrl(agentId, apiKey),
+    buildVoicePrompt(ctx),
+    latestReachOut(),
+  ]);
+  if (!signedUrl) return Response.json({ error: "signed_url_failed" }, { status: 502 });
+
+  let firstMessage = fallbackGreeting;
+  if (incomingLine) return Response.json({ signedUrl, prompt, firstMessage: incomingLine, voiceId: persona.voiceId });
   if (memories.length > 0) {
     try {
       const line = await generateText({
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
             content: `(${profile.name} just picked up your phone call. Say your opening line: greet them by name and, if it fits, warmly ask about one thing you remember. One or two short spoken sentences, no emojis, no stage directions.)`,
           },
         ],
-        maxTokens: 200,
+        maxTokens: 800,
       });
       if (line) firstMessage = line;
     } catch (error) {

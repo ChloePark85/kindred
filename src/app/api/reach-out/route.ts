@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateText } from "@/lib/claude";
 import { getRelevantMemories } from "@/lib/memories";
-import { getPersona } from "@/lib/personas";
+import { requestedPartnerId, resolvePartner } from "@/lib/partner";
 import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
 import { getStage } from "@/lib/relationship";
 import { getOrCreateSchedule } from "@/lib/schedule";
@@ -143,20 +143,22 @@ async function pickNudge(
   return { ...chosen, memories: chosen.memories.slice(0, 3) };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const requested = requestedPartnerId(await request.json().catch(() => null));
   const { supabase, user, profile } = await getSession();
   if (!user || !profile) {
     return Response.json({ error: "Please sign in again to continue." }, { status: 401 });
   }
-  const persona = getPersona(profile.partner_id);
+  const persona = await resolvePartner(supabase, user.id, profile.partner_id, requested);
   if (!persona) {
-    return Response.json({ error: "Please choose a companion first." }, { status: 400 });
+    return Response.json({ error: "This page is out of date. Please refresh the page." }, { status: 409 });
   }
 
   // Conditional update so a double click can't skip two days at once.
   const { data: updated, error: updateError } = await supabase
     .from("profiles")
-    .update({ day_offset: profile.day_offset + 1 })
+    // The partner who reaches out becomes the open one, so the incoming-call screen shows them.
+    .update({ day_offset: profile.day_offset + 1, partner_id: persona.id })
     .eq("id", user.id)
     .eq("day_offset", profile.day_offset)
     .select("*")
@@ -212,7 +214,7 @@ export async function POST() {
 Write ${nudge ? "3-4" : "2-3"} short sentences with exactly one question. Reply with the message text only.`,
         },
       ],
-      maxTokens: 400,
+      maxTokens: 1000,
     });
     if (!content) {
       throw new Error("Empty reach-out message");

@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/supabase/server";
-import { getPersona } from "@/lib/personas";
+import { resolvePartner } from "@/lib/partner";
 import { getRelevantMemories } from "@/lib/memories";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
@@ -8,11 +8,14 @@ import { simNow } from "@/lib/simtime";
 
 export const ELEVENLABS_API = "https://api.elevenlabs.io";
 
-/** Signed-in, onboarded user with their partner, or null. */
-export async function loadVoiceUser() {
+/**
+ * Signed-in, onboarded user with the partner the page shows (`requestedPartnerId`,
+ * which must be a match) or, without one, the open partner. Null otherwise.
+ */
+export async function loadVoiceUser(requestedPartnerId?: string) {
   const { supabase, user, profile } = await getSession();
   if (!user || !profile) return null;
-  const persona = getPersona(profile.partner_id);
+  const persona = await resolvePartner(supabase, user.id, profile.partner_id, requestedPartnerId);
   if (!persona) return null;
   return { supabase, user, profile, persona, now: simNow(profile) };
 }

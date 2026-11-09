@@ -36,7 +36,9 @@ export function useRingtone(active: boolean) {
       ctx = null;
     }
 
+    let stopped = false;
     const ring = () => {
+      if (stopped) return;
       if (ctx && ctx.state === "running") {
         const t = ctx.currentTime + 0.05;
         chime(ctx, 659.25, t); // E5
@@ -50,13 +52,17 @@ export function useRingtone(active: boolean) {
     const unlock = () => {
       ctx?.resume().catch(() => {});
     };
-    ctx?.resume().then(ring, () => {});
+    // Ring now (vibration at least). If audio is still locked, try to unlock it and
+    // play the chime once that works, without playing it twice when it already runs.
+    const wasRunning = ctx?.state === "running";
+    ring();
+    if (ctx && !wasRunning) ctx.resume().then(ring, () => {});
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
 
-    ring();
     const timer = window.setInterval(ring, RING_EVERY_MS);
     return () => {
+      stopped = true;
       window.clearInterval(timer);
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);

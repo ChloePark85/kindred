@@ -111,7 +111,7 @@ async function MatchesContent() {
                   className={`card flex flex-col gap-4 ${isOpen ? "border-accent bg-accent-soft/40 ring-2 ring-accent" : ""}`}
                 >
                   <div className="flex items-start gap-4">
-                    <PartnerPhoto persona={persona} className="h-20 w-20 shrink-0 rounded-full" />
+                    <PartnerPhoto persona={persona} small decorative className="h-20 w-20 shrink-0 rounded-full" />
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                         <h2 className="text-2xl font-bold">
@@ -129,7 +129,7 @@ async function MatchesContent() {
                             {stage.emoji} {stage.label}
                           </span>
                         )}
-                        <span className="rounded-full bg-[#2a1a1f] px-2 text-sm font-bold text-white">AI</span>
+                        <span className="rounded-full bg-[#2a1a1f] px-2.5 py-0.5 text-base font-bold text-white">AI</span>
                         {isOpen && <span className="font-bold text-accent">• Open now</span>}
                       </p>
                       <p className="truncate text-lg text-muted">{preview(last, persona)}</p>

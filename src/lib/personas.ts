@@ -309,7 +309,10 @@ export function personasFor(seeking: Seeking | null | undefined): Persona[] {
   return PERSONAS;
 }
 
-/** Path of the partner's photo in /public. Missing files fall back to a gradient (see PartnerPhoto). */
-export function photoUrl(persona: Persona) {
-  return `/partners/${persona.id}.jpg`;
+/**
+ * Path of the partner's photo in /public. `small` is a 400px-wide copy for avatars
+ * (public/partners/small/). Missing files fall back to a gradient (see PartnerPhoto).
+ */
+export function photoUrl(persona: Persona, small = false) {
+  return small ? `/partners/small/${persona.id}.jpg` : `/partners/${persona.id}.jpg`;
 }

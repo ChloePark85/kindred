@@ -42,12 +42,12 @@ function mergeMessages(current: Message[], incoming: Message[]) {
 
 type PostResult = { ok: boolean; data: ChatResponse | null } | null;
 
-async function postChat(body: ChatBody): Promise<PostResult> {
+async function postChat(body: ChatBody, partnerId: string): Promise<PostResult> {
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, partnerId }),
     });
     const data = (await res.json().catch(() => null)) as ChatResponse | null;
     return { ok: res.ok, data };
@@ -132,7 +132,7 @@ export function ChatWindow({
   }
 
   async function callChat(body: ChatBody, tempId?: string) {
-    return applyResult(await postChat(body), tempId);
+    return applyResult(await postChat(body, persona.id), tempId);
   }
 
   async function run(body: ChatBody, opts: { showTyping: boolean; tempId?: string }) {
@@ -173,7 +173,7 @@ export function ChatWindow({
       startedRef.current = true;
       // inFlight/typing start as true when the conversation is empty, so the greeting needs no setup here.
       if (initialMessages.length === 0) {
-        void postChat({ greet: true })
+        void postChat({ greet: true }, persona.id)
           .then((result) => {
             const data = applyResult(result);
             if (!data || data.error) setCanRetry(true);
@@ -291,7 +291,7 @@ export function ChatWindow({
       >
         {showsStart && (
           <li className="flex flex-col items-center gap-2 py-4 text-center">
-            <PartnerPhoto persona={persona} className="h-28 w-28 rounded-full shadow-md ring-4 ring-white" />
+            <PartnerPhoto persona={persona} small className="h-28 w-28 rounded-full shadow-md ring-4 ring-white" />
             <p className="text-xl font-bold">
               💞 You matched with {persona.name}
               {matchedOn ? ` · ${matchedOn}` : ""}

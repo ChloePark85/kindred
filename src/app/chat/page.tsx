@@ -70,6 +70,7 @@ async function ChatContent() {
           </p>
         ) : (
           <ChatWindow
+            key={persona.id}
             persona={persona}
             initialMessages={messages}
             initialStatus={status}
@@ -77,7 +78,7 @@ async function ChatContent() {
             initialStage={{ id: stage.id, label: stage.label, emoji: stage.emoji }}
             matchedOn={matchedOn}
             showsStart={messages.length < HISTORY_LIMIT}
-            reachOut={<ReachOutButton partnerName={persona.name} />}
+            reachOut={<ReachOutButton partnerId={persona.id} partnerName={persona.name} />}
           />
         )}
       </main>

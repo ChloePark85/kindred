@@ -1,5 +1,6 @@
 import { generateText } from "@/lib/claude";
 import { buildVoicePrompt, ELEVENLABS_API, loadVoiceUser } from "../voiceContext";
+import { requestedPartnerId } from "@/lib/partner";
 
 async function synthesize(text: string, voiceId: string): Promise<string | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -30,8 +31,8 @@ async function synthesize(text: string, voiceId: string): Promise<string | null>
  * short voice message instead. Returns { text, audio } where audio is a
  * base64 MP3, or null if speech synthesis failed (the text is still shown).
  */
-export async function POST() {
-  const ctx = await loadVoiceUser();
+export async function POST(request: Request) {
+  const ctx = await loadVoiceUser(requestedPartnerId(await request.json().catch(() => null)));
   if (!ctx) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const { supabase, user, profile, persona, now } = ctx;
@@ -47,7 +48,7 @@ export async function POST() {
           content: `(You tried to phone ${profile.name} but the call didn't connect, so you are leaving a voice message. Speak 2-3 short, warm sentences: greet them by name, follow up on one thing you remember about them if there is one, and say you'd love to talk soon. Plain spoken words only — no emojis, no stage directions, no sound effects.)`,
         },
       ],
-      maxTokens: 300,
+      maxTokens: 1000,
     });
   } catch (error) {
     console.error("Voice message generation failed", error);

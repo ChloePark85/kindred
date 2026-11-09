@@ -42,7 +42,7 @@ export function MatchOverlay({
           <div className="z-10 flex h-32 w-32 items-center justify-center rounded-full border-4 border-white bg-white text-6xl font-bold text-accent">
             {userName.trim()[0]?.toUpperCase() ?? "🙂"}
           </div>
-          <PartnerPhoto persona={persona} priority className="-ml-6 h-32 w-32 rounded-full border-4 border-white" />
+          <PartnerPhoto persona={persona} small priority className="-ml-6 h-32 w-32 rounded-full border-4 border-white" />
         </div>
 
         <p className="text-2xl font-bold">You and {persona.name} liked each other</p>

@@ -30,11 +30,18 @@ export async function generateText(opts: {
     output_config: { effort: opts.effort ?? "low" },
     ...FALLBACK,
   });
-  if (response.stop_reason === "refusal") return "";
-  return response.content
-    .flatMap((b) => (b.type === "text" ? [b.text] : []))
-    .join("")
-    .trim();
+  const text =
+    response.stop_reason === "refusal"
+      ? ""
+      : response.content
+          .flatMap((b) => (b.type === "text" ? [b.text] : []))
+          .join("")
+          .trim();
+  // Thinking counts toward max_tokens, so a tight cap can cut a reply short or leave it empty.
+  if (!text || response.stop_reason === "max_tokens") {
+    console.warn("Claude reply empty or cut short", { stop_reason: response.stop_reason, usage: response.usage });
+  }
+  return text;
 }
 
 /** Structured JSON output validated against a Zod schema. Returns null on refusal or parse failure. */

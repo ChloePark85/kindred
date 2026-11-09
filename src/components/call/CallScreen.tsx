@@ -79,6 +79,7 @@ function CallAvatar({ persona, pulsing }: { persona: Persona; pulsing: boolean }
       )}
       <PartnerPhoto
         persona={persona}
+        small
         className="size-full rounded-full border-4 border-white shadow-2xl"
         priority
       />
@@ -91,20 +92,17 @@ function RoundButton({
   icon,
   onClick,
   className,
-  pressed,
 }: {
   label: string;
   icon: string;
   onClick: () => void;
   className: string;
-  pressed?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={onClick}
-        aria-pressed={pressed}
         aria-label={label}
         className={`flex size-24 items-center justify-center rounded-full text-4xl shadow-xl transition-colors ${className}`}
       >
@@ -161,7 +159,10 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
   // An unanswered incoming call becomes a missed call.
   useEffect(() => {
     if (phase !== "ringing") return;
-    const timer = window.setTimeout(() => setPhase("missed"), RING_TIMEOUT_MS);
+    const timer = window.setTimeout(() => {
+      clearIncomingParam(); // so a refresh on the missed-call screen doesn't ring again
+      setPhase("missed");
+    }, RING_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [phase]);
 
@@ -188,7 +189,7 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
   function saveTranscript(transcript: CaptionLine[]) {
     if (transcript.length === 0) return;
     setSaveState("saving");
-    const body = JSON.stringify({ transcript });
+    const body = JSON.stringify({ transcript, partnerId: persona.id });
     fetch("/api/voice/transcript", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -228,7 +229,11 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
     setFallbackReason(reason);
     setVoiceMessage({ status: "loading" });
     setPhase("fallback");
-    fetch("/api/voice/message", { method: "POST" })
+    fetch("/api/voice/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partnerId: persona.id }),
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error(`voice message ${res.status}`);
         const data = (await res.json()) as { text: string; audio: string | null };
@@ -281,7 +286,7 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
       const res = await fetch("/api/voice/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ incoming: answering }),
+        body: JSON.stringify({ incoming: answering, partnerId: persona.id }),
       });
       if (!res.ok) throw new Error(`session ${res.status}`);
       session = (await res.json()) as SessionResponse;
@@ -441,7 +446,6 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
                   <RoundButton
                     label={conversation.isMuted ? "Unmute" : "Mute"}
                     icon={conversation.isMuted ? "🎙️" : "🔇"}
-                    pressed={conversation.isMuted}
                     onClick={() => conversation.setMuted(!conversation.isMuted)}
                     className={
                       conversation.isMuted ? "bg-white text-foreground" : "bg-white/25 text-white hover:bg-white/35"

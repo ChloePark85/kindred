@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /** Simulates the next morning: the partner writes first, then the chat refreshes. */
-export function ReachOutButton({ partnerName }: { partnerName: string }) {
+export function ReachOutButton({ partnerId, partnerName }: { partnerId: string; partnerName: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,13 +13,17 @@ export function ReachOutButton({ partnerName }: { partnerName: string }) {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/reach-out", { method: "POST" });
+      const res = await fetch("/api/reach-out", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partnerId }),
+      });
       const body = (await res.json().catch(() => null)) as { error?: string; ring?: boolean } | null;
       if (!res.ok) {
         setError(body?.error ?? `${partnerName} couldn't write right now. Please try again.`);
         return;
       }
-      if (body?.ring) router.push("/call?incoming=1");
+      if (body?.ring) router.push(`/call?incoming=1&ring=${Date.now()}`);
       else router.refresh();
     } catch {
       setError("We couldn't reach the internet. Please check your connection and try again.");

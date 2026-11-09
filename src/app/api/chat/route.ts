@@ -4,7 +4,7 @@ import { z } from "zod";
 import { awaitingDelayedReply, busyNote, isBusy, partnerStatus } from "@/app/chat/chat-helpers";
 import { generateText } from "@/lib/claude";
 import { extractAndStoreMemories, getRelevantMemories } from "@/lib/memories";
-import { getPersona } from "@/lib/personas";
+import { relabelCallTranscript, requestedPartnerId, resolvePartner } from "@/lib/partner";
 import { getStage, type Stage } from "@/lib/relationship";
 import { buildPersonaPrompt } from "@/lib/prompt";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
@@ -31,15 +31,16 @@ const Body = z.union([
 
 const HISTORY_LIMIT = 20;
 const FRIENDLY_ERROR = "Sorry, something went wrong. Please try again.";
+const STALE_PARTNER_ERROR = "This page is out of date. Please refresh the page.";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
 /** Alternating user/assistant turns (first is user) from stored messages, skipping busy notes. */
-function toConversation(history: Message[]): Anthropic.Beta.BetaMessageParam[] {
+function toConversation(history: Message[], userName: string): Anthropic.Beta.BetaMessageParam[] {
   const turns: Turn[] = [];
   for (const m of history) {
     const role = m.role === "user" ? "user" : "assistant";
-    const content = m.kind === "call" ? `(Transcript of our phone call earlier:)\n${m.content.slice(0, 3000)}` : m.content;
+    const content = m.kind === "call" ? `(Transcript of our phone call earlier:)\n${relabelCallTranscript(m.content, userName).slice(0, 3000)}` : m.content;
     const last = turns.at(-1);
     if (last?.role === role) last.content += `\n\n${content}`;
     else turns.push({ role, content });
@@ -49,15 +50,16 @@ function toConversation(history: Message[]): Anthropic.Beta.BetaMessageParam[] {
 }
 
 export async function POST(request: Request) {
-  const parsed = Body.safeParse(await request.json().catch(() => null));
+  const raw: unknown = await request.json().catch(() => null);
+  const parsed = Body.safeParse(raw);
   if (!parsed.success) return Response.json({ error: "Please type a message first." }, { status: 400 });
   const body = parsed.data;
 
   try {
     const { supabase, user, profile } = await getSession();
     if (!user || !profile) return Response.json({ error: "Please start again from the welcome page." }, { status: 401 });
-    const persona = getPersona(profile.partner_id);
-    if (!persona) return Response.json({ error: "Please choose a partner first." }, { status: 400 });
+    const persona = await resolvePartner(supabase, user.id, profile.partner_id, requestedPartnerId(raw));
+    if (!persona) return Response.json({ error: STALE_PARTNER_ERROR, refresh: true }, { status: 409 });
 
     const sim = simNow(profile);
     const schedule = await getOrCreateSchedule(supabase, user.id, persona, sim.date, sim.weekday);
@@ -90,7 +92,9 @@ export async function POST(request: Request) {
       stage: Stage,
       nowActivity: ScheduleItem | null,
       extraInstructions = "",
-    ): Promise<Message> {
+      /** For the first greeting: skip storing if a message arrived meanwhile (e.g. from another tab). */
+      onlyIfStillEmpty = false,
+    ): Promise<Message | null> {
       const conversation = history.filter((m) => m.kind !== "busy_note").slice(-HISTORY_LIMIT);
       const lastPartner = conversation.findLastIndex((m) => m.role === "partner");
       const unanswered = conversation.slice(lastPartner + 1).filter((m) => m.role === "user");
@@ -113,8 +117,16 @@ export async function POST(request: Request) {
           stage,
         }) + extraInstructions;
 
-      const text = await generateText({ system, messages: toConversation(conversation), maxTokens: 600 });
+      const text = await generateText({ system, messages: toConversation(conversation, profile!.name), maxTokens: 1500 });
       if (!text) throw new Error("Empty reply from model");
+      if (onlyIfStillEmpty) {
+        const { count } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user!.id)
+          .eq("partner_id", persona!.id);
+        if ((count ?? 0) > 0) return null;
+      }
       const saved = await store("partner", "chat", text);
 
       if (unanswered.length > 0) {
@@ -158,8 +170,8 @@ export async function POST(request: Request) {
         sim_date: sim.date,
         created_at: new Date().toISOString(),
       };
-      const greeting = await reply([cue], stage, item);
-      return Response.json({ messages: [greeting], status, stage: stageInfo(stage) });
+      const greeting = await reply([cue], stage, item, "", true);
+      return Response.json({ messages: greeting ? [greeting] : [], status, stage: stageInfo(stage) });
     }
 
     if ("resume" in body) {
@@ -170,7 +182,7 @@ export async function POST(request: Request) {
         ? `\n\nYou were away (${item ? item.activity : "asleep for the night"}) and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`
         : `\n\nYou were away for a little while and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`;
       const nowActivity = item ? { ...item, activity: `just back from ${item.activity}`, busy: false } : null;
-      const saved = await reply(recent, stage, nowActivity, backFrom);
+      const saved = (await reply(recent, stage, nowActivity, backFrom))!;
       return Response.json({ messages: [saved], status, stage: stageInfo(stage) });
     }
 
@@ -197,7 +209,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      const saved = await reply([...recent, userMessage], stage, item);
+      const saved = (await reply([...recent, userMessage], stage, item))!;
       return Response.json({ messages: [userMessage, saved], status, stage: stageInfo(stage) });
     } catch (e) {
       // The user's message is saved; the client offers "Try again", which sends { resume: true }.

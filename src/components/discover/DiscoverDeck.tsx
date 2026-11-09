@@ -85,7 +85,9 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable]")) return;
+      // Only when nothing else has focus, so arrow keys on a link or button never pass or like someone by accident.
+      const focused = target?.closest("input, textarea, select, [contenteditable], button, a");
+      if (focused && !focused.hasAttribute("data-deck-decision")) return;
       if (e.key === "ArrowLeft") decide("pass");
       else if (e.key === "ArrowRight") decide("like");
     };
@@ -252,6 +254,7 @@ function DecisionButton({
         onClick={onClick}
         disabled={disabled}
         aria-label={`${label} ${name}`}
+        data-deck-decision
         className={`flex h-20 w-20 items-center justify-center rounded-full text-4xl shadow-lg transition-transform hover:scale-105 disabled:opacity-50 motion-reduce:transition-none ${
           variant === "like" ? "bg-accent text-white" : "border-4 border-[#3d3438] bg-white text-[#3d3438]"
         }`}

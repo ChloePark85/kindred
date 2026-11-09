@@ -24,13 +24,16 @@ async function CallContent({ searchParams }: { searchParams: SearchParams }) {
   const { stage } = await getStage(supabase, user.id, persona.id);
   // ?incoming=1: the partner is calling the user (e.g. after "Next day").
   const incoming = params.incoming === "1";
+  // A fresh id per ring, so a second call from the same partner starts ringing again
+  // instead of reusing the preserved screen of the last one.
+  const ringId = typeof params.ring === "string" ? params.ring : "";
 
   return (
     <>
       <AppHeader persona={persona} stage={stage} active="/call" />
       <main className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-3xl flex-1 flex-col px-3 py-3">
         <h1 className="sr-only">Call {persona.name}</h1>
-        <CallScreen persona={persona} userName={profile.name} incoming={incoming} />
+        <CallScreen key={`${persona.id}:${incoming}:${ringId}`} persona={persona} userName={profile.name} incoming={incoming} />
       </main>
     </>
   );

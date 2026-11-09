@@ -1,18 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { after } from "next/server";
 import { z } from "zod";
-import { generateText } from "@/lib/claude";
-import { getPersona, type Persona } from "@/lib/personas";
-import { buildPersonaPrompt } from "@/lib/prompt";
-import { STAGES } from "@/lib/relationship";
-import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
-import { simNow } from "@/lib/simtime";
+import { getPersona } from "@/lib/personas";
 import { getSession } from "@/lib/supabase/server";
-import type { Profile } from "@/lib/types";
 
 /**
  * POST   { partnerId, action: "like" | "pass" }
- *   like -> { match: { partnerId, matchedAt } }   (every like matches; the partner becomes the open one)
+ *   like -> { match: { partnerId, matchedAt } }   (every like matches; the partner becomes the open one;
+ *            the chat page sends the first greeting when it opens)
  *   pass -> { passed: { partnerId } }
  * DELETE -> { cleared: number }                   ("Start over": forgets passes, keeps matches)
  * Errors -> { error } with 400 / 401 / 500.
@@ -21,56 +14,6 @@ const BodySchema = z.object({
   partnerId: z.string().min(1).max(64),
   action: z.enum(["like", "pass"]),
 });
-
-async function isConversationEmpty(supabase: SupabaseClient, userId: string, partnerId: string) {
-  const { count } = await supabase
-    .from("messages")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("partner_id", partnerId);
-  return (count ?? 0) === 0;
-}
-
-/** The partner's first message after a new match, so the chat isn't empty. */
-async function sendFirstGreeting(supabase: SupabaseClient, profile: Profile, persona: Persona) {
-  if (!(await isConversationEmpty(supabase, profile.id, persona.id))) return;
-
-  const sim = simNow(profile);
-  const schedule = await getOrCreateSchedule(supabase, profile.id, persona, sim.date, sim.weekday);
-  const system = buildPersonaPrompt({
-    persona,
-    profile,
-    memories: [],
-    simDate: sim.date,
-    weekday: sim.weekday,
-    time: sim.time,
-    nowActivity: currentItem(schedule, sim.time),
-    channel: "chat",
-    stage: STAGES[0],
-  });
-  const text = await generateText({
-    system,
-    messages: [
-      {
-        role: "user",
-        content: `(App instruction, not from ${profile.name}.) You and ${profile.name} just matched on SeniorChat. Write your very first message to them: greet them warmly by name, say you're glad you matched, mention one small thing from your profile or your day, and ask one easy question. 2-3 short sentences. Reply with the message text only.`,
-      },
-    ],
-    maxTokens: 400,
-  });
-  if (!text) return;
-
-  // The chat page greets empty conversations too; check again right before writing.
-  if (!(await isConversationEmpty(supabase, profile.id, persona.id))) return;
-  await supabase.from("messages").insert({
-    user_id: profile.id,
-    partner_id: persona.id,
-    role: "partner",
-    kind: "chat",
-    content: text,
-    sim_date: sim.date,
-  });
-}
 
 export async function POST(request: Request) {
   const { supabase, user, profile } = await getSession();
@@ -107,6 +50,7 @@ export async function POST(request: Request) {
   }
 
   const matchedAt = existing?.status === "matched" && existing.matched_at ? existing.matched_at : new Date().toISOString();
+  // One after the other: the open partner (profiles.partner_id) must always be a match.
   const { error: matchError } = await supabase
     .from("matches")
     .upsert(
@@ -120,15 +64,6 @@ export async function POST(request: Request) {
   if (profileError) {
     return Response.json({ error: `We couldn't open your chat with ${persona.name}. Please try again.` }, { status: 500 });
   }
-
-  const greetingProfile = { ...profile, partner_id: persona.id } as Profile;
-  after(async () => {
-    try {
-      await sendFirstGreeting(supabase, greetingProfile, persona);
-    } catch (e) {
-      console.error("Match greeting failed", e);
-    }
-  });
 
   return Response.json({ match: { partnerId: persona.id, matchedAt } });
 }

@@ -30,7 +30,7 @@ export function AppHeader({
       <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3">
         {persona && (
           <div className="flex items-center gap-3">
-            <PartnerPhoto persona={persona} className="h-16 w-16 shrink-0 rounded-full" priority />
+            <PartnerPhoto persona={persona} small className="h-16 w-16 shrink-0 rounded-full" priority />
             <div className="min-w-0">
               <p className="text-xl font-bold">
                 {persona.name}, {persona.age}
