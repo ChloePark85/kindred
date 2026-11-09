@@ -3,6 +3,7 @@ import { getPersona } from "@/lib/personas";
 import { getRelevantMemories } from "@/lib/memories";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { buildPersonaPrompt } from "@/lib/prompt";
+import { getStage } from "@/lib/relationship";
 import { simNow } from "@/lib/simtime";
 
 export const ELEVENLABS_API = "https://api.elevenlabs.io";
@@ -20,7 +21,8 @@ export type VoiceUser = NonNullable<Awaited<ReturnType<typeof loadVoiceUser>>>;
 
 /**
  * Builds the shared persona prompt for the voice channel, with memories picked
- * against the last few messages so the call continues where the chat left off.
+ * against the last few messages so the call continues where the chat left off,
+ * and the relationship stage so the call is as close as the chat.
  */
 export async function buildVoicePrompt(ctx: VoiceUser) {
   const { supabase, user, profile, persona, now } = ctx;
@@ -33,9 +35,10 @@ export async function buildVoicePrompt(ctx: VoiceUser) {
     .limit(6);
   const recentText = (recent ?? []).map((m) => m.content as string).join("\n");
 
-  const [schedule, memories] = await Promise.all([
+  const [schedule, memories, { stage }] = await Promise.all([
     getOrCreateSchedule(supabase, user.id, persona, now.date, now.weekday),
     getRelevantMemories(supabase, user.id, persona.id, recentText, now.date),
+    getStage(supabase, user.id, persona.id),
   ]);
   const prompt = buildPersonaPrompt({
     persona,
@@ -46,6 +49,7 @@ export async function buildVoicePrompt(ctx: VoiceUser) {
     time: now.time,
     nowActivity: currentItem(schedule, now.time),
     channel: "voice",
+    stage,
   });
   return { prompt, memories };
 }

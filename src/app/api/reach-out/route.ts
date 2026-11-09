@@ -3,6 +3,7 @@ import { generateText } from "@/lib/claude";
 import { getRelevantMemories } from "@/lib/memories";
 import { getPersona } from "@/lib/personas";
 import { buildPersonaPrompt } from "@/lib/prompt";
+import { getStage } from "@/lib/relationship";
 import { getOrCreateSchedule } from "@/lib/schedule";
 import { simNow } from "@/lib/simtime";
 import { getSession } from "@/lib/supabase/server";
@@ -174,9 +175,10 @@ export async function POST() {
     const morning = schedule.items.find((i) => !i.busy) ?? null;
     const time = morning?.start ?? "09:00";
 
-    const [followUps, nudge] = await Promise.all([
+    const [followUps, nudge, { stage }] = await Promise.all([
       pickFollowUps(supabase, user.id, persona.id, date),
       pickNudge(supabase, user.id, persona.id, date),
+      getStage(supabase, user.id, persona.id),
     ]);
     const memories = await getRelevantMemories(supabase, user.id, persona.id, followUps.map((m) => m.content).join(" "), date);
 
@@ -189,6 +191,7 @@ export async function POST() {
       time,
       nowActivity: morning,
       channel: "chat",
+      stage,
     });
     const plan = schedule.items.map((i) => `${i.start}-${i.end} ${i.activity}`).join("; ");
     const followUpText =
@@ -239,7 +242,8 @@ Write ${nudge ? "3-4" : "2-3"} short sentences with exactly one question. Reply 
         );
     }
 
-    return Response.json({ message: message as Message });
+    // Every other simulated morning the partner phones instead (the first "Next day" rings).
+    return Response.json({ message: message as Message, ring: nextProfile.day_offset % 2 === 1 });
   } catch (err) {
     console.error("reach-out failed", err);
     // Roll the day back so the user can simply try again.

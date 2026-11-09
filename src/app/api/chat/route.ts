@@ -5,6 +5,7 @@ import { awaitingDelayedReply, busyNote, isBusy, partnerStatus } from "@/app/cha
 import { generateText } from "@/lib/claude";
 import { extractAndStoreMemories, getRelevantMemories } from "@/lib/memories";
 import { getPersona } from "@/lib/personas";
+import { getStage, type Stage } from "@/lib/relationship";
 import { buildPersonaPrompt } from "@/lib/prompt";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { simNow } from "@/lib/simtime";
@@ -18,7 +19,8 @@ import type { Message, MessageKind, MessageRole, ScheduleItem } from "@/lib/type
  *                          owed, just store the message and return { queued: true }.
  *   { resume: true }    -> the delayed reply to every user message since the partner's last reply.
  *   { greet: true }     -> the partner's first message when the conversation is empty.
- * Every success returns { messages: Message[] (newly stored), status: string }.
+ * Every success returns { messages: Message[] (newly stored), status: string, stage: { id, label, emoji } }
+ * where stage is the relationship stage after this exchange (the client celebrates when it goes up).
  */
 
 const Body = z.union([
@@ -83,7 +85,12 @@ export async function POST(request: Request) {
     }
 
     /** Generates and stores the partner's reply to the conversation so far. */
-    async function reply(history: Message[], nowActivity: ScheduleItem | null, extraInstructions = ""): Promise<Message> {
+    async function reply(
+      history: Message[],
+      stage: Stage,
+      nowActivity: ScheduleItem | null,
+      extraInstructions = "",
+    ): Promise<Message> {
       const conversation = history.filter((m) => m.kind !== "busy_note").slice(-HISTORY_LIMIT);
       const lastPartner = conversation.findLastIndex((m) => m.role === "partner");
       const unanswered = conversation.slice(lastPartner + 1).filter((m) => m.role === "user");
@@ -103,6 +110,7 @@ export async function POST(request: Request) {
           time: sim.time,
           nowActivity,
           channel: "chat",
+          stage,
         }) + extraInstructions;
 
       const text = await generateText({ system, messages: toConversation(conversation), maxTokens: 600 });
@@ -131,8 +139,15 @@ export async function POST(request: Request) {
       return saved;
     }
 
+    async function currentStage() {
+      const { stage } = await getStage(supabase, user!.id, persona!.id);
+      return stage;
+    }
+    const stageInfo = (stage: Stage) => ({ id: stage.id, label: stage.label, emoji: stage.emoji });
+
     if ("greet" in body) {
-      if (recent.length > 0) return Response.json({ messages: [], status });
+      const stage = await currentStage();
+      if (recent.length > 0) return Response.json({ messages: [], status, stage: stageInfo(stage) });
       const cue: Message = {
         id: "greeting-cue",
         user_id: user.id,
@@ -143,41 +158,54 @@ export async function POST(request: Request) {
         sim_date: sim.date,
         created_at: new Date().toISOString(),
       };
-      const greeting = await reply([cue], item);
-      return Response.json({ messages: [greeting], status });
+      const greeting = await reply([cue], stage, item);
+      return Response.json({ messages: [greeting], status, stage: stageInfo(stage) });
     }
 
     if ("resume" in body) {
+      const stage = await currentStage();
       const lastReal = recent.findLast((m) => m.kind !== "busy_note");
-      if (!lastReal || lastReal.role !== "user") return Response.json({ messages: [], status });
+      if (!lastReal || lastReal.role !== "user") return Response.json({ messages: [], status, stage: stageInfo(stage) });
       const backFrom = isBusy(item)
         ? `\n\nYou were away (${item ? item.activity : "asleep for the night"}) and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`
         : `\n\nYou were away for a little while and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`;
       const nowActivity = item ? { ...item, activity: `just back from ${item.activity}`, busy: false } : null;
-      const saved = await reply(recent, nowActivity, backFrom);
-      return Response.json({ messages: [saved], status });
+      const saved = await reply(recent, stage, nowActivity, backFrom);
+      return Response.json({ messages: [saved], status, stage: stageInfo(stage) });
     }
 
     const userMessage = await store("user", "chat", body.message);
+    // Counted after storing, so this message can be the one that moves the relationship up a stage.
+    const stage = await currentStage();
 
     if (awaitingDelayedReply(recent)) {
-      return Response.json({ messages: [userMessage], status, queued: true });
+      return Response.json({ messages: [userMessage], status, stage: stageInfo(stage), queued: true });
     }
 
     if (isBusy(item)) {
       const note = busyNote(persona, item);
       const noteMessage = await store("partner", "busy_note", note);
       const replyAfterMs = 8000 + Math.floor(Math.random() * 7000);
-      return Response.json({ messages: [userMessage, noteMessage], status, busy: true, note, replyAfterMs });
+      return Response.json({
+        messages: [userMessage, noteMessage],
+        status,
+        stage: stageInfo(stage),
+        busy: true,
+        note,
+        replyAfterMs,
+      });
     }
 
     try {
-      const saved = await reply([...recent, userMessage], item);
-      return Response.json({ messages: [userMessage, saved], status });
+      const saved = await reply([...recent, userMessage], stage, item);
+      return Response.json({ messages: [userMessage, saved], status, stage: stageInfo(stage) });
     } catch (e) {
       // The user's message is saved; the client offers "Try again", which sends { resume: true }.
       console.error("Chat reply failed", e);
-      return Response.json({ error: FRIENDLY_ERROR, messages: [userMessage], status, retry: true }, { status: 502 });
+      return Response.json(
+        { error: FRIENDLY_ERROR, messages: [userMessage], status, stage: stageInfo(stage), retry: true },
+        { status: 502 },
+      );
     }
   } catch (e) {
     console.error("Chat request failed", e);

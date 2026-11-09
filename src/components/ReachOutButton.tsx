@@ -14,12 +14,13 @@ export function ReachOutButton({ partnerName }: { partnerName: string }) {
     setError(null);
     try {
       const res = await fetch("/api/reach-out", { method: "POST" });
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as { error?: string; ring?: boolean } | null;
       if (!res.ok) {
         setError(body?.error ?? `${partnerName} couldn't write right now. Please try again.`);
         return;
       }
-      router.refresh();
+      if (body?.ring) router.push("/call?incoming=1");
+      else router.refresh();
     } catch {
       setError("We couldn't reach the internet. Please check your connection and try again.");
     } finally {
@@ -32,7 +33,7 @@ export function ReachOutButton({ partnerName }: { partnerName: string }) {
       <button type="button" onClick={reachOut} disabled={pending} aria-busy={pending} className="btn-secondary w-full">
         {pending ? `${partnerName} is writing to you…` : `☀️ Next day: let ${partnerName} reach out first`}
       </button>
-      <p className="text-base text-muted">This skips ahead to tomorrow morning so {partnerName} can send you the first message.</p>
+      <p className="text-base text-muted">This skips ahead to tomorrow morning so {partnerName} can get in touch first — with a message, or sometimes a phone call.</p>
       <p role="status" aria-live="polite" className="sr-only">
         {pending ? `${partnerName} is writing to you` : ""}
       </p>

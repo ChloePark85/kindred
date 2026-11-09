@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { ReachOutButton } from "@/components/ReachOutButton";
+import { getStage } from "@/lib/relationship";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { requireOnboarded } from "@/lib/session";
 import { simNow } from "@/lib/simtime";
@@ -12,6 +13,8 @@ import { awaitingDelayedReply, partnerStatus } from "./chat-helpers";
 export const metadata: Metadata = {
   title: "Chat — SeniorChat",
 };
+
+const HISTORY_LIMIT = 100;
 
 export default function ChatPage() {
   return (
@@ -24,14 +27,29 @@ export default function ChatPage() {
 async function ChatContent() {
   const { supabase, user, profile, persona } = await requireOnboarded();
 
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("partner_id", persona.id)
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [{ data, error }, { data: match }, { stage }] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("partner_id", persona.id)
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_LIMIT),
+    supabase
+      .from("matches")
+      .select("matched_at, created_at")
+      .eq("user_id", user.id)
+      .eq("partner_id", persona.id)
+      .eq("status", "matched")
+      .maybeSingle(),
+    getStage(supabase, user.id, persona.id),
+  ]);
   const messages = ((data ?? []) as Message[]).reverse();
+  const matchRow = match as { matched_at: string | null; created_at: string } | null;
+  const matchedAt = matchRow?.matched_at ?? matchRow?.created_at;
+  const matchedOn = matchedAt
+    ? new Date(matchedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: profile.timezone || "UTC" })
+    : null;
 
   let status: string | null = null;
   try {
@@ -44,7 +62,7 @@ async function ChatContent() {
 
   return (
     <>
-      <AppHeader persona={persona} active="/chat" />
+      <AppHeader persona={persona} stage={stage} active="/chat" />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-4 text-lg">
         {error ? (
           <p role="alert" className="card text-xl">
@@ -56,6 +74,9 @@ async function ChatContent() {
             initialMessages={messages}
             initialStatus={status}
             initialAwaiting={awaitingDelayedReply(messages)}
+            initialStage={{ id: stage.id, label: stage.label, emoji: stage.emoji }}
+            matchedOn={matchedOn}
+            showsStart={messages.length < HISTORY_LIMIT}
             reachOut={<ReachOutButton partnerName={persona.name} />}
           />
         )}

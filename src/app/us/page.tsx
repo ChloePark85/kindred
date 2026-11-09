@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { ConnectionsCard, weeklyConnections } from "@/components/us/ConnectionsCard";
 import { MemoryTimeline } from "@/components/us/MemoryTimeline";
+import { StageCard } from "@/components/us/StageCard";
+import { getClosenessPoints, stageProgress } from "@/lib/relationship";
 import { requireOnboarded } from "@/lib/session";
 import { simNow } from "@/lib/simtime";
 import type { Memory } from "@/lib/types";
@@ -22,20 +24,40 @@ export default function UsPage() {
 
 async function UsContent() {
   const { supabase, user, profile, persona } = await requireOnboarded();
-  const { data, error } = await supabase
-    .from("memories")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("partner_id", persona.id)
-    .order("sim_date", { ascending: false })
-    .order("created_at", { ascending: false });
+  const [{ data, error }, { data: match }, points] = await Promise.all([
+    supabase
+      .from("memories")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("partner_id", persona.id)
+      .order("sim_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("matches")
+      .select("matched_at")
+      .eq("user_id", user.id)
+      .eq("partner_id", persona.id)
+      .eq("status", "matched")
+      .maybeSingle(),
+    getClosenessPoints(supabase, user.id, persona.id),
+  ]);
+  const { stage, next, progress } = stageProgress(points);
   const memories = (data ?? []) as Memory[];
 
   return (
     <>
-      <AppHeader persona={persona} active="/us" />
+      <AppHeader persona={persona} stage={stage} active="/us" />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6 text-lg">
         <h1 className="text-3xl font-bold">What {persona.name} remembers about you</h1>
+
+        <StageCard
+          partnerName={persona.name}
+          stage={stage}
+          next={next}
+          progress={progress}
+          pointsToNext={next ? next.min - points : 0}
+          matchedAt={(match?.matched_at as string | null | undefined) ?? null}
+        />
 
         {!error && <ConnectionsCard people={weeklyConnections(memories, simNow(profile).date)} partnerName={persona.name} />}
 

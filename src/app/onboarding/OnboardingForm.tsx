@@ -2,9 +2,15 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import type { Seeking } from "@/lib/personas";
 import { createClient } from "@/lib/supabase/client";
 
 const AGE_RANGES = ["50–59", "60–69", "70–79", "80+"];
+const SEEKING: { value: Seeking; label: string; emoji: string }[] = [
+  { value: "men", label: "Men", emoji: "👨" },
+  { value: "women", label: "Women", emoji: "👩" },
+  { value: "anyone", label: "Anyone", emoji: "💞" },
+];
 const INTERESTS = [
   "🌱 Gardening",
   "🍳 Cooking",
@@ -29,6 +35,7 @@ export function OnboardingForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [ageRange, setAgeRange] = useState<string | null>(null);
+  const [seeking, setSeeking] = useState<Seeking | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [other, setOther] = useState("");
   const [saving, setSaving] = useState(false);
@@ -48,6 +55,10 @@ export function OnboardingForm() {
     }
     if (!ageRange) {
       setError("Please choose your age range.");
+      return;
+    }
+    if (!seeking) {
+      setError("Please choose who you would like to meet.");
       return;
     }
     setSaving(true);
@@ -73,6 +84,7 @@ export function OnboardingForm() {
         body: JSON.stringify({
           name: name.trim(),
           age_range: ageRange,
+          seeking,
           interests: [...interests, ...extra],
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
@@ -83,7 +95,7 @@ export function OnboardingForm() {
         setSaving(false);
         return;
       }
-      router.push("/onboarding/partner");
+      router.push("/discover");
     } catch (err) {
       console.error(err);
       setError("Sorry, something went wrong. Please try again.");
@@ -119,11 +131,33 @@ export function OnboardingForm() {
               aria-pressed={ageRange === range}
               onClick={() => setAgeRange(range)}
               className={`btn min-h-16 text-xl ${
-                ageRange === range ? "bg-accent text-white" : "border-2 border-[#cfc3b5] bg-white"
+                ageRange === range ? "bg-accent text-white" : "border-2 border-[#e2c4cc] bg-white"
               }`}
             >
               {ageRange === range && <span aria-hidden>✓</span>}
               {range}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="card flex flex-col gap-3">
+        <legend className="float-left mb-3 text-2xl font-bold">Who would you like to meet?</legend>
+        <div className="clear-both grid grid-cols-3 gap-3">
+          {SEEKING.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={seeking === option.value}
+              onClick={() => setSeeking(option.value)}
+              className={`btn min-h-24 flex-col gap-1 px-2 text-xl ${
+                seeking === option.value ? "bg-accent text-white" : "border-2 border-[#e2c4cc] bg-white"
+              }`}
+            >
+              <span className="text-4xl leading-none" aria-hidden>
+                {option.emoji}
+              </span>
+              {option.label}
             </button>
           ))}
         </div>
@@ -142,7 +176,7 @@ export function OnboardingForm() {
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggle(interest)}
-                className={`btn rounded-full px-5 ${on ? "bg-accent text-white" : "border-2 border-[#cfc3b5] bg-white"}`}
+                className={`btn rounded-full px-5 ${on ? "bg-accent text-white" : "border-2 border-[#e2c4cc] bg-white"}`}
               >
                 {on && <span aria-hidden>✓</span>}
                 {chip}
@@ -170,7 +204,7 @@ export function OnboardingForm() {
       )}
 
       <button type="submit" disabled={saving} aria-busy={saving} className="btn-primary min-h-16 w-full text-xl">
-        {saving ? "Saving…" : "Continue ➤"}
+        {saving ? "Saving…" : "💘 Start meeting people"}
       </button>
     </form>
   );
