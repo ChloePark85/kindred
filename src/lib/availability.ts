@@ -141,3 +141,8 @@ export function likeDecisionMinutes(avail: Availability, firstLike: boolean, rol
   if (avail.state === "free") return firstLike ? 0.5 + roll * 0.5 : 1 + roll * 4;
   return avail.minutes + Math.round(roll * 10);
 }
+
+/** Whether this morning's reach-out is a phone call: the first, third, fifth… with a partner. */
+export function shouldRing(earlierReachOuts: number) {
+  return earlierReachOuts % 2 === 0;
+}

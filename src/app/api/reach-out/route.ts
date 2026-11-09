@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateText } from "@/lib/claude";
 import { getRelevantMemories } from "@/lib/memories";
+import { shouldRing } from "@/lib/availability";
 import { requestedPartnerId, resolvePartner } from "@/lib/partner";
 import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
 import { getStage } from "@/lib/relationship";
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
 
   try {
     const { date, weekday } = simNow(nextProfile);
-    const [schedule, followUps, nudge, { stage }, recent, { data: lastPartner }] = await Promise.all([
+    const [schedule, followUps, nudge, { stage }, recent, { data: lastPartner }, { count: earlierReachOuts }] = await Promise.all([
       getOrCreateSchedule(supabase, user.id, persona, date, weekday),
       pickFollowUps(supabase, user.id, persona.id, date),
       pickNudge(supabase, user.id, persona.id, date),
@@ -189,6 +190,12 @@ export async function POST(request: Request) {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("partner_id", persona.id)
+        .eq("kind", "reach_out"),
     ]);
     const unansweredNote = lastPartner?.kind === "busy_note" ? (lastPartner.content as string) : null;
     const morning = schedule.items.find((i) => !i.busy) ?? null;
@@ -259,8 +266,9 @@ Write ${nudge ? "3-4" : "2-3"} short sentences with exactly one question. Reply 
         );
     }
 
-    // Every other simulated morning the partner phones instead (the first "Next day" rings).
-    return Response.json({ message: message as Message, ring: nextProfile.day_offset % 2 === 1 });
+    // Every other morning the partner phones instead, counted per partner, so their
+    // first morning is always a call (skipping days elsewhere doesn't change that).
+    return Response.json({ message: message as Message, ring: shouldRing(earlierReachOuts ?? 0) });
   } catch (err) {
     console.error("reach-out failed", err);
     // Roll the day back so the user can simply try again.

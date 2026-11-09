@@ -119,3 +119,10 @@ describe("clockLabel", () => {
     ["21:45", "9:45 PM"],
   ])("%s -> %s", (t, label) => expect(clockLabel(t)).toBe(label));
 });
+
+describe("morning reach-out rings", () => {
+  it("rings on a partner's first morning, then every other one", async () => {
+    const { shouldRing } = await import("@/lib/availability");
+    expect([0, 1, 2, 3].map(shouldRing)).toEqual([true, false, true, false]);
+  });
+});
