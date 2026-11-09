@@ -2,7 +2,7 @@ import { getSession } from "@/lib/supabase/server";
 import { getPersona } from "@/lib/personas";
 import { getRelevantMemories } from "@/lib/memories";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
-import { buildPersonaPrompt } from "@/lib/prompt";
+import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
 import { getStage } from "@/lib/relationship";
 import { simNow } from "@/lib/simtime";
 
@@ -26,14 +26,8 @@ export type VoiceUser = NonNullable<Awaited<ReturnType<typeof loadVoiceUser>>>;
  */
 export async function buildVoicePrompt(ctx: VoiceUser) {
   const { supabase, user, profile, persona, now } = ctx;
-  const { data: recent } = await supabase
-    .from("messages")
-    .select("content")
-    .eq("user_id", user.id)
-    .eq("partner_id", persona.id)
-    .order("created_at", { ascending: false })
-    .limit(6);
-  const recentText = (recent ?? []).map((m) => m.content as string).join("\n");
+  const recent = await getRecentLines(supabase, user.id, persona.id);
+  const recentText = recent.map((m) => m.content).join("\n");
 
   const [schedule, memories, { stage }] = await Promise.all([
     getOrCreateSchedule(supabase, user.id, persona, now.date, now.weekday),
@@ -50,6 +44,7 @@ export async function buildVoicePrompt(ctx: VoiceUser) {
     nowActivity: currentItem(schedule, now.time),
     channel: "voice",
     stage,
+    recent,
   });
   return { prompt, memories };
 }

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateText } from "@/lib/claude";
 import { getRelevantMemories } from "@/lib/memories";
 import { getPersona } from "@/lib/personas";
-import { buildPersonaPrompt } from "@/lib/prompt";
+import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
 import { getStage } from "@/lib/relationship";
 import { getOrCreateSchedule } from "@/lib/schedule";
 import { simNow } from "@/lib/simtime";
@@ -171,15 +171,15 @@ export async function POST() {
 
   try {
     const { date, weekday } = simNow(nextProfile);
-    const schedule = await getOrCreateSchedule(supabase, user.id, persona, date, weekday);
-    const morning = schedule.items.find((i) => !i.busy) ?? null;
-    const time = morning?.start ?? "09:00";
-
-    const [followUps, nudge, { stage }] = await Promise.all([
+    const [schedule, followUps, nudge, { stage }, recent] = await Promise.all([
+      getOrCreateSchedule(supabase, user.id, persona, date, weekday),
       pickFollowUps(supabase, user.id, persona.id, date),
       pickNudge(supabase, user.id, persona.id, date),
       getStage(supabase, user.id, persona.id),
+      getRecentLines(supabase, user.id, persona.id),
     ]);
+    const morning = schedule.items.find((i) => !i.busy) ?? null;
+    const time = morning?.start ?? "09:00";
     const memories = await getRelevantMemories(supabase, user.id, persona.id, followUps.map((m) => m.content).join(" "), date);
 
     const system = buildPersonaPrompt({
@@ -192,6 +192,7 @@ export async function POST() {
       nowActivity: morning,
       channel: "chat",
       stage,
+      recent,
     });
     const plan = schedule.items.map((i) => `${i.start}-${i.end} ${i.activity}`).join("; ");
     const followUpText =
