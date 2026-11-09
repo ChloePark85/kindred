@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -25,6 +26,8 @@ export async function createClient() {
 
 /** Returns the signed-in user and their profile, or nulls. */
 export async function getSession() {
+  // Per-request data: tell Next not to prerender past here (supabase-js reads the clock).
+  await connection();
   const supabase = await createClient();
   const {
     data: { user },
