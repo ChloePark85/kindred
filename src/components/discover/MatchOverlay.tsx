@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PartnerPhoto } from "@/components/PartnerPhoto";
 import type { Persona } from "@/lib/personas";
 
@@ -15,7 +15,20 @@ export function MatchOverlay({
   userName: string;
   onContinue: () => void;
 }) {
-  const callRef = useRef<HTMLAnchorElement>(null);
+  const router = useRouter();
+  const callRef = useRef<HTMLButtonElement>(null);
+  const [opening, setOpening] = useState(false);
+
+  /** Makes this partner the open one (another answer may have come in meanwhile), then goes there. */
+  async function go(href: "/call" | "/chat") {
+    setOpening(true);
+    await fetch("/api/matches/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partnerId: persona.id }),
+    }).catch(() => null);
+    router.push(href);
+  }
 
   useEffect(() => {
     callRef.current?.focus();
@@ -45,16 +58,27 @@ export function MatchOverlay({
           <PartnerPhoto persona={persona} small priority className="-ml-6 h-32 w-32 rounded-full border-4 border-white" />
         </div>
 
-        <p className="text-2xl font-bold">You and {persona.name} liked each other</p>
+        <p className="text-2xl font-bold">{persona.name} liked you back</p>
         <p className="rounded-full bg-black/40 px-4 py-1.5 text-lg">🤖 {persona.name} is an AI companion.</p>
 
         <div className="flex w-full flex-col gap-3">
-          <Link ref={callRef} href="/call" className="btn min-h-16 bg-white text-xl text-accent hover:bg-accent-soft">
+          <button
+            ref={callRef}
+            type="button"
+            disabled={opening}
+            onClick={() => go("/call")}
+            className="btn min-h-16 bg-white text-xl text-accent hover:bg-accent-soft"
+          >
             📞 Call {persona.name} now
-          </Link>
-          <Link href="/chat" className="btn min-h-16 border-2 border-white text-xl text-white hover:bg-white/15">
+          </button>
+          <button
+            type="button"
+            disabled={opening}
+            onClick={() => go("/chat")}
+            className="btn min-h-16 border-2 border-white text-xl text-white hover:bg-white/15"
+          >
             💬 Say hello
-          </Link>
+          </button>
           <button type="button" onClick={onContinue} className="btn text-white underline underline-offset-4">
             Keep meeting people
           </button>

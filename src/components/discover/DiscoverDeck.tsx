@@ -3,15 +3,19 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DeclineNotice } from "@/components/discover/DeclineNotice";
 import { MatchOverlay } from "@/components/discover/MatchOverlay";
+import { PendingLikes } from "@/components/discover/PendingLikes";
 import { ProfileCard, ProfileDetails } from "@/components/discover/ProfileCard";
+import type { DecidedLike, PendingLike } from "@/lib/likes";
 import { getPersona, type Persona } from "@/lib/personas";
 
 type Action = "like" | "pass";
 
 const SWIPE_THRESHOLD = 110; // px of horizontal drag that counts as a decision
 const FLING_MS = 300; // matches duration-300 on the card
-const LIKE_SUSPENSE_MS = 1500;
+/** Longest the page keeps a timer for an answer; longer waits are checked on the next visit. */
+const MAX_POLL_MS = 6 * 60 * 60_000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -19,18 +23,37 @@ function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-async function sendDecision(partnerId: string, action: Action) {
+type LikesResponse = {
+  pending?: PendingLike | PendingLike[] | null;
+  decided?: DecidedLike[];
+  error?: string;
+};
+
+async function callLikes(method: "POST" | "GET" | "PUT", body?: unknown): Promise<LikesResponse> {
   const res = await fetch("/api/discover", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ partnerId, action }),
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   });
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new Error(body?.error ?? "Something went wrong. Please try again.");
+  const data = (await res.json().catch(() => null)) as LikesResponse | null;
+  if (!res.ok) throw new Error(data?.error ?? "Something went wrong. Please try again.");
+  return data ?? {};
 }
 
 /** Swipeable stack of partner profiles with Pass / Like buttons, keyboard arrows and the match celebration. */
-export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[]; userName: string }) {
+export function DiscoverDeck({
+  initialDeck,
+  userName,
+  initialPending,
+  initialDecided,
+}: {
+  initialDeck: string[];
+  userName: string;
+  /** Likes the partners haven't answered yet. */
+  initialPending: PendingLike[];
+  /** Answers that came in since the last visit, to reveal one by one. */
+  initialDecided: DecidedLike[];
+}) {
   const router = useRouter();
   const [deck, setDeck] = useState<Persona[]>(() =>
     initialDeck.map((id) => getPersona(id)).filter((p): p is Persona => Boolean(p)),
@@ -38,7 +61,12 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [fling, setFling] = useState<Action | null>(null);
   const [sending, setSending] = useState<Persona | null>(null);
-  const [matched, setMatched] = useState<Persona | null>(null);
+  const [pending, setPending] = useState<PendingLike[]>(initialPending);
+  const [answers, setAnswers] = useState<DecidedLike[]>(initialDecided);
+  const [skipping, setSkipping] = useState(false);
+  const answer = answers[0] ?? null;
+  const answerPersona = answer ? (getPersona(answer.partnerId) ?? null) : null;
+  const matched = answer?.status === "matched" ? answerPersona : null;
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -47,7 +75,22 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
 
   const current = deck[0] ?? null;
   const next = deck[1] ?? null;
-  const busy = fling !== null || sending !== null || matched !== null;
+  const busy = fling !== null || sending !== null || answer !== null;
+
+  /** Folds a likes response into the waiting list and queues any answers to reveal. */
+  const applyLikes = useCallback((data: LikesResponse) => {
+    if (Array.isArray(data.pending)) setPending(data.pending);
+    else if (data.pending) {
+      const one = data.pending;
+      setPending((list) => [...list.filter((p) => p.partnerId !== one.partnerId), one]);
+    }
+    const decided = data.decided ?? [];
+    if (decided.length > 0) {
+      const ids = new Set(decided.map((d) => d.partnerId));
+      setPending((list) => list.filter((p) => !ids.has(p.partnerId)));
+      setAnswers((queue) => [...queue, ...decided]);
+    }
+  }, []);
 
   const decide = useCallback(
     async (action: Action) => {
@@ -64,14 +107,14 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
 
       try {
         if (action === "pass") {
-          await sendDecision(persona.id, "pass");
+          await callLikes("POST", { partnerId: persona.id, action: "pass" });
           return;
         }
         setSending(persona);
-        await Promise.all([sendDecision(persona.id, "like"), wait(LIKE_SUSPENSE_MS)]);
+        const data = await callLikes("POST", { partnerId: persona.id, action: "like" });
         setSending(null);
-        setMatched(persona);
-        setAnnouncement(`It's a match! You and ${persona.name} liked each other.`);
+        applyLikes(data);
+        setAnnouncement(`Your like is on its way to ${persona.name}.`);
       } catch (e) {
         // Put the card back so nothing is lost.
         setSending(null);
@@ -79,8 +122,37 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
         setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
       }
     },
-    [deck, busy],
+    [deck, busy, applyLikes],
   );
+
+  // Ask again when the next partner is due to answer (only while it's a reasonable wait).
+  const nextWait = pending.length > 0 ? Math.min(...pending.map((p) => p.waitMs)) : null;
+  useEffect(() => {
+    if (nextWait === null || nextWait > MAX_POLL_MS) return;
+    const timer = window.setTimeout(() => {
+      callLikes("GET").then(applyLikes, () => {});
+    }, nextWait + 1500);
+    return () => window.clearTimeout(timer);
+  }, [nextWait, pending, applyLikes]);
+
+  const answerAnnouncement =
+    answer && answerPersona
+      ? answer.status === "matched"
+        ? `It's a match! ${answerPersona.name} liked you back.`
+        : `${answerPersona.name} decided not to connect right now.`
+      : null;
+
+  async function skipAhead() {
+    setSkipping(true);
+    setError(null);
+    try {
+      applyLikes(await callLikes("PUT"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      setSkipping(false);
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -117,9 +189,10 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
     }
   }
 
-  function keepMeeting() {
-    setMatched(null);
-    router.refresh(); // header now shows the newly matched partner
+  function nextAnswer() {
+    const wasMatch = answer?.status === "matched";
+    setAnswers((queue) => queue.slice(1));
+    if (wasMatch) router.refresh(); // header now shows the newly matched partner
   }
 
   async function startOver() {
@@ -144,7 +217,7 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
   return (
     <>
       <p role="status" aria-live="polite" className="sr-only">
-        {announcement}
+        {answerAnnouncement ?? announcement}
       </p>
 
       {error && (
@@ -153,10 +226,12 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
         </p>
       )}
 
+      <PendingLikes pending={pending} onSkip={skipAhead} skipping={skipping} />
+
       {sending ? (
         <div className="card flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
           <span className="animate-pulse text-6xl motion-reduce:animate-none" aria-hidden>
-            ❤️
+            💌
           </span>
           <p className="text-2xl font-bold">Sending your like to {sending.name}…</p>
         </div>
@@ -227,7 +302,8 @@ export function DiscoverDeck({ initialDeck, userName }: { initialDeck: string[];
         </section>
       )}
 
-      {matched && <MatchOverlay persona={matched} userName={userName} onContinue={keepMeeting} />}
+      {matched && <MatchOverlay persona={matched} userName={userName} onContinue={nextAnswer} />}
+      {answer?.status === "declined" && answerPersona && <DeclineNotice persona={answerPersona} onContinue={nextAnswer} />}
     </>
   );
 }

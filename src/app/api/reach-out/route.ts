@@ -173,13 +173,24 @@ export async function POST(request: Request) {
 
   try {
     const { date, weekday } = simNow(nextProfile);
-    const [schedule, followUps, nudge, { stage }, recent] = await Promise.all([
+    const [schedule, followUps, nudge, { stage }, recent, { data: lastPartner }] = await Promise.all([
       getOrCreateSchedule(supabase, user.id, persona, date, weekday),
       pickFollowUps(supabase, user.id, persona.id, date),
       pickNudge(supabase, user.id, persona.id, date),
       getStage(supabase, user.id, persona.id),
       getRecentLines(supabase, user.id, persona.id),
+      // A busy note as the partner's latest message means the user's last messages are still unanswered.
+      supabase
+        .from("messages")
+        .select("kind, content")
+        .eq("user_id", user.id)
+        .eq("partner_id", persona.id)
+        .eq("role", "partner")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
+    const unansweredNote = lastPartner?.kind === "busy_note" ? (lastPartner.content as string) : null;
     const morning = schedule.items.find((i) => !i.busy) ?? null;
     const time = morning?.start ?? "09:00";
     const memories = await getRelevantMemories(supabase, user.id, persona.id, followUps.map((m) => m.content).join(" "), date);
@@ -201,6 +212,9 @@ export async function POST(request: Request) {
       followUps.length > 0
         ? `Naturally follow up on:\n${followUps.map((m) => describeFollowUp(m, date)).join("\n")}`
         : `You don't know much about ${nextProfile.name} yet, so ask a gentle question to get to know them better.`;
+    const unansweredText = unansweredNote
+      ? `\nImportant: ${nextProfile.name} wrote to you while you were away, and the app told them: "${unansweredNote}" You never answered. Start by answering what they last wrote (see your recent messages), with a short, natural word about why you're only replying now (fell asleep, got caught up). Then the rest.`
+      : "";
     const nudgeText = nudge
       ? `\nAlso, gently and without pressure, encourage ${nextProfile.name} to give ${nudge.name}${nudge.relationship ? ` (${nudge.relationship})` : ""} a call or a message, referencing what they told you:\n${nudge.memories.map((m) => `- ${m.content}`).join("\n")}\nOne warm sentence, not preachy.`
       : "";
@@ -210,7 +224,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "user",
-          content: `(App instruction, not from ${nextProfile.name}.) It is the morning of ${weekday}. Write the first message of the day to ${nextProfile.name}, starting the conversation yourself. Mention briefly what you're up to today from your schedule (${plan}). ${followUpText}${nudgeText}
+          content: `(App instruction, not from ${nextProfile.name}.) It is the morning of ${weekday}. Write the first message of the day to ${nextProfile.name}, starting the conversation yourself. Mention briefly what you're up to today from your schedule (${plan}). ${followUpText}${unansweredText}${nudgeText}
 Write ${nudge ? "3-4" : "2-3"} short sentences with exactly one question. Reply with the message text only.`,
         },
       ],

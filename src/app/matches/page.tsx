@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { PartnerPhoto } from "@/components/PartnerPhoto";
 import { getPersona, type Persona } from "@/lib/personas";
+import { settleLikes } from "@/lib/likes";
 import { getStage, type Stage } from "@/lib/relationship";
 import { requireProfile } from "@/lib/session";
 import type { Message } from "@/lib/types";
@@ -33,7 +34,11 @@ export default function MatchesPage() {
 }
 
 async function MatchesContent() {
-  const { supabase, user, profile, persona: openPersona } = await requireProfile();
+  const { supabase, user, profile, persona: wasOpen } = await requireProfile();
+  // Partners whose time has come answer the user's likes now; a yes becomes the open partner.
+  const { decided, pending } = await settleLikes(supabase, user.id, profile);
+  const lastYes = decided.findLast((d) => d.status === "matched");
+  const openPersona = lastYes ? (getPersona(lastYes.partnerId) ?? wasOpen) : wasOpen;
 
   const { data: matchRows, error } = await supabase
     .from("matches")
@@ -83,6 +88,18 @@ async function MatchesContent() {
       />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6 text-lg">
         <h1 className="text-3xl font-bold">💞 Your matches</h1>
+
+        {pending.length > 0 && (
+          <Link href="/discover" className="card flex items-center gap-3 text-lg hover:bg-accent-soft/40">
+            <span className="text-3xl" aria-hidden>
+              💌
+            </span>
+            <span>
+              Waiting to hear back from{" "}
+              <strong>{pending.map((p) => getPersona(p.partnerId)?.name).filter(Boolean).join(", ")}</strong>
+            </span>
+          </Link>
+        )}
 
         {error ? (
           <p role="alert" className="card text-xl">

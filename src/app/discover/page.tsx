@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { DiscoverDeck } from "@/components/discover/DiscoverDeck";
-import { personasFor } from "@/lib/personas";
+import { settleLikes } from "@/lib/likes";
+import { getPersona, personasFor } from "@/lib/personas";
 import { getStage } from "@/lib/relationship";
 import { requireProfile } from "@/lib/session";
 
@@ -19,7 +20,11 @@ export default function DiscoverPage() {
 }
 
 async function DiscoverContent() {
-  const { supabase, user, profile, persona } = await requireProfile();
+  const { supabase, user, profile, persona: openPersona } = await requireProfile();
+  // Partners whose time has come answer the user's likes now.
+  const { decided, pending } = await settleLikes(supabase, user.id, profile);
+  const lastYes = decided.findLast((d) => d.status === "matched");
+  const persona = lastYes ? (getPersona(lastYes.partnerId) ?? openPersona) : openPersona;
   const [{ data: seen }, stage] = await Promise.all([
     supabase.from("matches").select("partner_id").eq("user_id", user.id),
     persona ? getStage(supabase, user.id, persona.id) : null,
@@ -35,7 +40,13 @@ async function DiscoverContent() {
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 px-4 py-4 text-lg">
         <h1 className="sr-only">Meet new people</h1>
         {/* Remount when the server deck changes (e.g. after "Start over"). */}
-        <DiscoverDeck key={deckIds.join(",")} initialDeck={deckIds} userName={profile.name} />
+        <DiscoverDeck
+          key={deckIds.join(",")}
+          initialDeck={deckIds}
+          userName={profile.name}
+          initialPending={pending}
+          initialDecided={decided}
+        />
       </main>
     </>
   );

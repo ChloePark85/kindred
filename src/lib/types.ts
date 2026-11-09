@@ -25,6 +25,8 @@ export interface Message {
   nudged_person?: string | null;
   sim_date: string;
   created_at: string;
+  /** On busy notes: when (simulated clock) the partner is free to reply. */
+  reply_at?: string | null;
 }
 
 export interface Memory {
@@ -63,7 +65,9 @@ export interface Match {
   id: string;
   user_id: string;
   partner_id: string;
-  status: "passed" | "matched";
+  status: "passed" | "pending" | "matched" | "declined";
   created_at: string;
   matched_at: string | null;
+  /** For pending likes: when (simulated clock) the partner answers. */
+  decide_at: string | null;
 }

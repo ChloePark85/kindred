@@ -27,6 +27,7 @@ export function fakeSupabase(respond: (call: Call) => Result = () => ({ data: nu
         delete: () => ((call.op = "delete"), builder),
         eq: (col: string, val: unknown) => (call.filters.push(["eq", col, val]), builder),
         neq: (col: string, val: unknown) => (call.filters.push(["neq", col, val]), builder),
+        in: (col: string, val: unknown) => (call.filters.push(["in", col, val]), builder),
         order: () => builder,
         limit: () => builder,
         single: () => builder,

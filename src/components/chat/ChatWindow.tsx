@@ -18,8 +18,11 @@ type ChatResponse = {
   status?: string;
   busy?: boolean;
   note?: string;
-  replyAfterMs?: number;
+  /** How long until the partner can reply; null when it's too long to wait on this page (e.g. until morning). */
+  replyAfterMs?: number | null;
   queued?: boolean;
+  /** The partner still isn't free; ask again after replyAfterMs. */
+  notYet?: boolean;
   retry?: boolean;
   stage?: StageInfo;
   error?: string;
@@ -149,13 +152,18 @@ export function ChatWindow({
   }
 
   async function resume() {
-    const data = await run({ resume: true }, { showTyping: true });
+    const data = await run({ resume: true }, { showTyping: false });
+    if (data?.notYet) {
+      // Still busy or asleep: keep waiting (or wait for the next visit if it's a long time).
+      if (data.replyAfterMs) scheduleResume(data.replyAfterMs);
+      return;
+    }
     if (data && !data.error) setAwaiting(false);
     else setCanRetry(true);
   }
 
-  function scheduleResume(ms: number) {
-    if (timerRef.current) return;
+  function scheduleResume(ms: number | null | undefined) {
+    if (!ms || timerRef.current) return;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       void resume();
@@ -224,9 +232,9 @@ export function ChatWindow({
       setCanRetry(true);
       return;
     }
-    if (data.busy) {
+    if (data.busy || data.queued) {
       setAwaiting(true);
-      scheduleResume(data.replyAfterMs ?? 10_000);
+      scheduleResume(data.replyAfterMs);
     }
   }
 
@@ -317,7 +325,7 @@ export function ChatWindow({
         )}
         {!typing && awaiting && (
           <p className="text-base text-muted">
-            {persona.name} will reply in a little while. You can keep writing in the meantime.
+            {persona.name} will reply when free. You can keep writing in the meantime.
           </p>
         )}
       </div>

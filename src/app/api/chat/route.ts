@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { after } from "next/server";
 import { z } from "zod";
-import { awaitingDelayedReply, busyNote, isBusy, partnerStatus } from "@/app/chat/chat-helpers";
+import { awaitingDelayedReply, partnerStatus } from "@/app/chat/chat-helpers";
+import { availability, msUntil, replyDelay, simInstantIn } from "@/lib/availability";
 import { generateText } from "@/lib/claude";
 import { extractAndStoreMemories, getRelevantMemories } from "@/lib/memories";
 import { relabelCallTranscript, requestedPartnerId, resolvePartner } from "@/lib/partner";
@@ -14,10 +15,12 @@ import type { Message, MessageKind, MessageRole, ScheduleItem } from "@/lib/type
 
 /**
  * POST /api/chat
- *   { message: string } -> store and reply now, or, if the partner is busy, store a busy note and
- *                          return { busy: true, note, replyAfterMs }; if a delayed reply is already
- *                          owed, just store the message and return { queued: true }.
- *   { resume: true }    -> the delayed reply to every user message since the partner's last reply.
+ *   { message: string } -> store and reply now, or, if the partner is busy, asleep or hasn't looked
+ *                          yet, store a busy note (with reply_at) and return { busy: true, note, replyAfterMs };
+ *                          if a delayed reply is already owed, store the message and return { queued: true, replyAfterMs }.
+ *   { resume: true }    -> the delayed reply to every user message since the partner's last reply, or
+ *                          { notYet: true, replyAfterMs } while the partner still isn't free.
+ *   replyAfterMs is null when the wait is too long to keep the page waiting (e.g. until morning).
  *   { greet: true }     -> the partner's first message when the conversation is empty.
  * Every success returns { messages: Message[] (newly stored), status: string, stage: { id, label, emoji } }
  * where stage is the relationship stage after this exchange (the client celebrates when it goes up).
@@ -30,6 +33,14 @@ const Body = z.union([
 ]);
 
 const HISTORY_LIMIT = 20;
+/** Longest wait the open chat page keeps a timer for; later replies arrive on the next visit or "Next day". */
+const MAX_CLIENT_WAIT_MS = 6 * 60 * 60_000;
+
+/** How long the page should wait before asking for the reply again (null: don't wait on this page). */
+function clientDelay(ms: number) {
+  if (ms <= 0) return 1000;
+  return ms <= MAX_CLIENT_WAIT_MS ? ms + 1500 : null;
+}
 const FRIENDLY_ERROR = "Sorry, something went wrong. Please try again.";
 const STALE_PARTNER_ERROR = "This page is out of date. Please refresh the page.";
 
@@ -76,10 +87,10 @@ export async function POST(request: Request) {
     if (loadError) throw loadError;
     const recent = (recentRows as Message[]).reverse();
 
-    async function store(role: MessageRole, kind: MessageKind, content: string): Promise<Message> {
+    async function store(role: MessageRole, kind: MessageKind, content: string, replyAt?: string): Promise<Message> {
       const { data, error } = await supabase
         .from("messages")
-        .insert({ user_id: user!.id, partner_id: persona!.id, role, kind, content, sim_date: sim.date })
+        .insert({ user_id: user!.id, partner_id: persona!.id, role, kind, content, sim_date: sim.date, reply_at: replyAt ?? null })
         .select("*")
         .single();
       if (error) throw error;
@@ -178,11 +189,16 @@ export async function POST(request: Request) {
       const stage = await currentStage();
       const lastReal = recent.findLast((m) => m.kind !== "busy_note");
       if (!lastReal || lastReal.role !== "user") return Response.json({ messages: [], status, stage: stageInfo(stage) });
-      const backFrom = isBusy(item)
-        ? `\n\nYou were away (${item ? item.activity : "asleep for the night"}) and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`
+      // The partner answers only once they're actually free (or awake) again.
+      const owed = recent.findLast((m) => m.kind === "busy_note");
+      const waitMs = owed?.reply_at ? msUntil(profile, owed.reply_at) : 0;
+      if (waitMs > 0) {
+        return Response.json({ messages: [], status, stage: stageInfo(stage), notYet: true, replyAfterMs: clientDelay(waitMs) });
+      }
+      const backFrom = owed
+        ? `\n\nWhile ${profile.name} was writing, the app told them: "${owed.content}" You are only now reading their messages. Say in a few natural words why you're answering late (e.g. back from what you were doing, just woke up, only now saw it), then answer everything they wrote.`
         : `\n\nYou were away for a little while and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`;
-      const nowActivity = item ? { ...item, activity: `just back from ${item.activity}`, busy: false } : null;
-      const saved = (await reply(recent, stage, nowActivity, backFrom))!;
+      const saved = (await reply(recent, stage, item, backFrom))!;
       return Response.json({ messages: [saved], status, stage: stageInfo(stage) });
     }
 
@@ -191,13 +207,17 @@ export async function POST(request: Request) {
     const stage = await currentStage();
 
     if (awaitingDelayedReply(recent)) {
-      return Response.json({ messages: [userMessage], status, stage: stageInfo(stage), queued: true });
+      const owed = recent.findLast((m) => m.kind === "busy_note");
+      const waitMs = owed?.reply_at ? msUntil(profile, owed.reply_at) : 0;
+      return Response.json({ messages: [userMessage], status, stage: stageInfo(stage), queued: true, replyAfterMs: clientDelay(waitMs) });
     }
 
-    if (isBusy(item)) {
-      const note = busyNote(persona, item);
-      const noteMessage = await store("partner", "busy_note", note);
-      const replyAfterMs = 8000 + Math.floor(Math.random() * 7000);
+    // Partners live their own day: busy, asleep, or just not looking at their phone yet.
+    const delay = replyDelay(persona, availability(schedule, sim.time), Math.random());
+    if (delay) {
+      const note = delay.note;
+      const noteMessage = await store("partner", "busy_note", note, simInstantIn(profile, delay.minutes));
+      const replyAfterMs = clientDelay(delay.minutes * 60_000);
       return Response.json({
         messages: [userMessage, noteMessage],
         status,
