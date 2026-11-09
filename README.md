@@ -2,7 +2,7 @@
 
 **AI companions for adults 50+.** Kindred works like a dating app: you match with AI partners who live their own day, remember what you share, call you first with a real voice, and gently nudge you back toward the people in your life. They are always honest that they're AI.
 
-Live: https://seniorchat-global.vercel.app · Demo mode for walkthroughs: https://seniorchat-global.vercel.app/?demo=1
+Live: https://meetkindred.vercel.app · Demo mode for walkthroughs: https://meetkindred.vercel.app/?demo=1
 
 ## Origin
 
