@@ -1,8 +1,12 @@
 import type { Persona } from "@/lib/personas";
 import type { Message, ScheduleItem } from "@/lib/types";
 
-/** Lowercases the first letter so an activity reads naturally mid-sentence. */
+/**
+ * Lowercases the first letter so an activity reads naturally mid-sentence,
+ * but leaves acronyms ("GP appointment") and names alone.
+ */
 function inSentence(activity: string) {
+  if (/^[A-Z]{2}/.test(activity)) return activity;
   return activity.charAt(0).toLowerCase() + activity.slice(1);
 }
 

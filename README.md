@@ -2,6 +2,8 @@
 
 An AI companion for adults 50+ who feel lonely. Pick one of three pre-made partners, chat in large, simple text, take a voice call, and see what your partner remembers about you. The partner is **always labeled as an AI**.
 
+Live: https://seniorchat-global.vercel.app
+
 ## Origin
 
 The concept comes from my earlier **Korean MVP** of an AI companion for older adults. This English version is a fresh build: **all code in this repository was written on 2026-11-09**, starting from an empty repo. No code was copied from the earlier project or any other project.

@@ -69,7 +69,7 @@ const ExtractionSchema = z.object({
   memories: z.array(
     z.object({
       category: z.enum(["event", "person", "feeling", "plan"]),
-      content: z.string().describe("One short third-person sentence about the user, e.g. 'Has a doctor's appointment for knee pain on Thursday.'"),
+      content: z.string().describe("One short sentence about the user without a subject or pronoun, e.g. 'Has a doctor's appointment for knee pain on Thursday.' or 'Misses their daughter Sarah.'"),
       event_date: z.string().nullable().describe("YYYY-MM-DD if a specific date is stated or clearly implied, else null"),
       importance: z.number().int().min(1).max(3),
       person_name: z
@@ -108,7 +108,7 @@ export async function extractAndStoreMemories(opts: {
 
   const result = await generateJson({
     system:
-      "You extract memorable personal facts about a user from a chat with their companion. Only extract things worth remembering and bringing up later: events (appointments, visits, outings), people in their life (names and relationships), feelings (worries, joys, loneliness), and plans. Ignore small talk and anything the companion said about itself. Never duplicate a known fact; return an empty list if nothing new.",
+      "You extract memorable personal facts about a user from a chat with their companion. Only extract things worth remembering and bringing up later: events (appointments, visits, outings), people in their life (names and relationships), feelings (worries, joys, loneliness), and plans. Ignore small talk and anything the companion said about itself. Don't guess the user's gender from their name: refer to them as 'they/their' unless they have stated their pronouns. Never duplicate a known fact; return an empty list if nothing new.",
     prompt: `Today is ${opts.weekday}, ${opts.simDate}. The user's name is ${opts.userName}.
 
 Already known:
