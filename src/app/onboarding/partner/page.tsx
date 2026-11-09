@@ -32,7 +32,7 @@ export default function ChoosePartnerPage() {
                 <AiBadge />
               </div>
             </div>
-            <p className="text-xl font-bold">{p.tagline}</p>
+            <p className="text-xl font-bold">{p.headline}</p>
             <p>{p.bio}</p>
             <ChoosePartnerButton partnerId={p.id} partnerName={p.name} />
           </li>

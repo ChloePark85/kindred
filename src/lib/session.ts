@@ -8,6 +8,13 @@ export async function requireOnboarded() {
   const { supabase, user, profile } = await getSession();
   if (!user || !profile) redirect("/onboarding");
   const persona = getPersona(profile.partner_id);
-  if (!persona) redirect("/onboarding/partner");
+  if (!persona) redirect("/discover");
   return { supabase, user, profile: profile as Profile, persona: persona as Persona };
+}
+
+/** For pages that only need a profile (Discover, Matches); the open partner may be null. */
+export async function requireProfile() {
+  const { supabase, user, profile } = await getSession();
+  if (!user || !profile) redirect("/onboarding");
+  return { supabase, user, profile: profile as Profile, persona: getPersona(profile.partner_id) ?? null };
 }

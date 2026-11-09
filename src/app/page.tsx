@@ -7,6 +7,6 @@ export const instant = false;
 export default async function Home() {
   const { profile } = await getSession();
   if (!profile) redirect("/onboarding");
-  if (!profile.partner_id) redirect("/onboarding/partner");
+  if (!profile.partner_id) redirect("/discover");
   redirect("/chat");
 }

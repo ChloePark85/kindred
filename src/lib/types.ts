@@ -8,6 +8,7 @@ export interface Profile {
   age_range: string;
   interests: string[];
   partner_id: string | null;
+  seeking: "men" | "women" | "anyone";
   timezone: string;
   day_offset: number;
   created_at: string;
@@ -56,4 +57,13 @@ export interface Schedule {
   partner_id: string;
   sim_date: string;
   items: ScheduleItem[];
+}
+
+export interface Match {
+  id: string;
+  user_id: string;
+  partner_id: string;
+  status: "passed" | "matched";
+  created_at: string;
+  matched_at: string | null;
 }
