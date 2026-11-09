@@ -61,7 +61,7 @@ export async function getRelevantMemories(
 export function formatMemoriesForPrompt(memories: Memory[]): string {
   if (memories.length === 0) return "(Nothing remembered yet — you are just getting to know them.)";
   return memories
-    .map((m) => `- [${m.category}] ${m.content}${m.event_date ? ` (date: ${m.event_date})` : ""}${m.followed_up ? " (already asked about)" : ""}`)
+    .map((m) => `- [${m.category}] ${m.content}${m.person_name ? ` (person: ${m.person_name}${m.relationship ? `, ${m.relationship}` : ""})` : ""}${m.event_date ? ` (date: ${m.event_date})` : ""}${m.followed_up ? " (already asked about)" : ""}`)
     .join("\n");
 }
 
@@ -72,6 +72,11 @@ const ExtractionSchema = z.object({
       content: z.string().describe("One short third-person sentence about the user, e.g. 'Has a doctor's appointment for knee pain on Thursday.'"),
       event_date: z.string().nullable().describe("YYYY-MM-DD if a specific date is stated or clearly implied, else null"),
       importance: z.number().int().min(1).max(3),
+      person_name: z
+        .string()
+        .nullable()
+        .describe("Name (or how the user refers to them, e.g. 'my sister') of a real person in the user's life this fact involves — family, friend, neighbor. Null if none. Never the companion."),
+      relationship: z.string().nullable().describe("Their relationship to the user, e.g. 'daughter', 'neighbor', 'old friend'. Null if none."),
     }),
   ),
 });
@@ -113,7 +118,7 @@ Latest exchange:
 ${opts.userName}: ${opts.userMessage}
 Companion: ${opts.partnerReply}
 
-Return new memories only. Resolve relative dates like "Thursday" or "tomorrow" to YYYY-MM-DD.`,
+Return new memories only. Resolve relative dates like "Thursday" or "tomorrow" to YYYY-MM-DD. Tag every memory that involves a real person in the user's life (family, friends, neighbors) with person_name and relationship.`,
     schema: ExtractionSchema,
   });
   if (!result || result.memories.length === 0) return [];
@@ -125,6 +130,8 @@ Return new memories only. Resolve relative dates like "Thursday" or "tomorrow" t
     content: m.content,
     event_date: /^\d{4}-\d{2}-\d{2}$/.test(m.event_date ?? "") ? m.event_date : null,
     importance: m.importance,
+    person_name: m.person_name?.trim() || null,
+    relationship: m.relationship?.trim() || null,
     source_message_id: opts.sourceMessageId,
     sim_date: opts.simDate,
   }));

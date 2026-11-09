@@ -20,6 +20,8 @@ export interface Message {
   role: MessageRole;
   kind: MessageKind;
   content: string;
+  /** On reach_out messages: the real person the partner encouraged the user to contact. */
+  nudged_person?: string | null;
   sim_date: string;
   created_at: string;
 }
@@ -33,6 +35,9 @@ export interface Memory {
   event_date: string | null;
   importance: 1 | 2 | 3;
   followed_up: boolean;
+  /** Real person in the user's life this memory involves (family, friend, neighbor), if any. */
+  person_name: string | null;
+  relationship: string | null;
   source_message_id: string | null;
   sim_date: string;
   created_at: string;
