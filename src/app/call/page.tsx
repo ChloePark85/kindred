@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { CallScreen } from "@/components/call/CallScreen";
-import { getStage } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { requireOnboarded } from "@/lib/session";
 
 export const metadata: Metadata = {

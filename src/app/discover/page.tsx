@@ -5,7 +5,7 @@ import { DiscoverDeck } from "@/components/discover/DiscoverDeck";
 import { isDemo } from "@/lib/demo";
 import { settleLikes } from "@/lib/likes";
 import { getPersona, personasFor } from "@/lib/personas";
-import { getStage } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { requireProfile } from "@/lib/session";
 
 export const metadata: Metadata = {

@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { ConnectionsCard, weeklyConnections } from "@/components/us/ConnectionsCard";
 import { MemoryTimeline } from "@/components/us/MemoryTimeline";
 import { StageCard } from "@/components/us/StageCard";
-import { getClosenessPoints, stageProgress } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { requireOnboarded } from "@/lib/session";
 import { simNow } from "@/lib/simtime";
 import type { Memory } from "@/lib/types";
@@ -24,7 +24,7 @@ export default function UsPage() {
 
 async function UsContent() {
   const { supabase, user, profile, persona } = await requireOnboarded();
-  const [{ data, error }, { data: match }, points] = await Promise.all([
+  const [{ data, error }, { data: match }, closeness] = await Promise.all([
     supabase
       .from("memories")
       .select("*")
@@ -39,9 +39,9 @@ async function UsContent() {
       .eq("partner_id", persona.id)
       .eq("status", "matched")
       .maybeSingle(),
-    getClosenessPoints(supabase, user.id, persona.id),
+    getStage(supabase, user.id, persona.id),
   ]);
-  const { stage, next, progress } = stageProgress(points);
+  const { stage, next, progress, chatsToNext } = closeness;
   const memories = (data ?? []) as Memory[];
 
   return (
@@ -55,7 +55,7 @@ async function UsContent() {
           stage={stage}
           next={next}
           progress={progress}
-          pointsToNext={next ? next.min - points : 0}
+          pointsToNext={chatsToNext}
           matchedAt={(match?.matched_at as string | null | undefined) ?? null}
         />
 

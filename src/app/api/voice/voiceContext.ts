@@ -3,7 +3,7 @@ import { resolvePartner } from "@/lib/partner";
 import { getRelevantMemories } from "@/lib/memories";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
-import { getStage } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { simNow } from "@/lib/simtime";
 
 export const ELEVENLABS_API = "https://api.elevenlabs.io";

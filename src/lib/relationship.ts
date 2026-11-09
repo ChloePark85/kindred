@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type StageId = "just_met" | "getting_to_know" | "close" | "sweethearts";
 
@@ -58,26 +57,4 @@ export function stageProgress(points: number) {
   const next = STAGES[STAGES.indexOf(stage) + 1];
   if (!next) return { stage, next: null, progress: 1 };
   return { stage, next, progress: (points - stage.min) / (next.min - stage.min) };
-}
-
-export async function getClosenessPoints(supabase: SupabaseClient, userId: string, partnerId: string) {
-  const [{ count: userMessages }, { count: calls }] = await Promise.all([
-    supabase
-      .from("messages")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("partner_id", partnerId)
-      .eq("role", "user"),
-    supabase
-      .from("messages")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("partner_id", partnerId)
-      .eq("kind", "call"),
-  ]);
-  return (userMessages ?? 0) + (calls ?? 0) * 5;
-}
-
-export async function getStage(supabase: SupabaseClient, userId: string, partnerId: string) {
-  return stageProgress(await getClosenessPoints(supabase, userId, partnerId));
 }

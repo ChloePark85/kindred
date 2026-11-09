@@ -4,7 +4,8 @@
  * own day, but on a demo-friendly clock so every scene happens on cue:
  * - a like is answered in a few seconds: the first is a yes, the second a gentle no;
  * - the first message after matching finds the partner busy for ~20 seconds;
- * - otherwise the partner is free and answers right away (no sleeping, no "not seen yet").
+ * - otherwise the partner is free and answers right away (no sleeping, no "not seen yet");
+ * - closeness counts faster, so the relationship moves up a stage within the demo.
  */
 export const DEMO_COOKIE = "sc_demo";
 
@@ -13,6 +14,11 @@ export const DEMO = {
   likeMinutes: 0.1,
   /** How long the partner stays busy after the user's first message. */
   busyMinutes: 0.33,
+  /**
+   * Closeness points count this many times over, so the relationship visibly grows
+   * in a short demo: the second message reaches "Getting to know you", a call reaches "Close".
+   */
+  closenessMultiplier: 4,
   /** What the partner is busy with when the schedule has no busy block to borrow. */
   busyFallback: "Out running a quick errand",
 } as const;

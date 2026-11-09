@@ -4,7 +4,7 @@ import { getRelevantMemories } from "@/lib/memories";
 import { shouldRing } from "@/lib/availability";
 import { requestedPartnerId, resolvePartner } from "@/lib/partner";
 import { buildPersonaPrompt, getRecentLines } from "@/lib/prompt";
-import { getStage } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { getOrCreateSchedule } from "@/lib/schedule";
 import { simNow } from "@/lib/simtime";
 import { getSession } from "@/lib/supabase/server";

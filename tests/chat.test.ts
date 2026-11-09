@@ -21,9 +21,9 @@ vi.mock("@/lib/memories", async (orig) => ({
   getRelevantMemories: async () => [],
   extractAndStoreMemories: vi.fn(async () => []),
 }));
-vi.mock("@/lib/relationship", async (orig) => {
-  const real = await orig<typeof import("@/lib/relationship")>();
-  return { ...real, getStage: async () => ({ stage: real.STAGES[0] }) };
+vi.mock("@/lib/closeness", async () => {
+  const { STAGES } = await vi.importActual<typeof import("@/lib/relationship")>("@/lib/relationship");
+  return { getStage: async () => ({ stage: STAGES[0] }) };
 });
 vi.mock("next/server", () => ({ after: (fn: () => unknown) => void fn() }));
 

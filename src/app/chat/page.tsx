@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { ReachOutButton } from "@/components/ReachOutButton";
-import { getStage } from "@/lib/relationship";
+import { getStage } from "@/lib/closeness";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { requireOnboarded } from "@/lib/session";
 import { simNow } from "@/lib/simtime";
