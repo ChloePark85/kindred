@@ -13,7 +13,7 @@ import type { Message } from "@/lib/types";
 import { OpenMatchButtons } from "./OpenMatchButtons";
 
 export const metadata: Metadata = {
-  title: "Your matches — SeniorChat",
+  title: "Your matches — Kindred",
 };
 
 type MatchRow = { partner_id: string; matched_at: string | null; created_at: string };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { OnboardingForm } from "./OnboardingForm";
 
 export const metadata: Metadata = {
-  title: "Welcome — SeniorChat",
+  title: "Welcome — Kindred",
 };
 
 export default function OnboardingPage() {

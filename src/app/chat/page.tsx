@@ -11,7 +11,7 @@ import type { Message } from "@/lib/types";
 import { awaitingDelayedReply, partnerStatus } from "./chat-helpers";
 
 export const metadata: Metadata = {
-  title: "Chat — SeniorChat",
+  title: "Chat — Kindred",
 };
 
 const HISTORY_LIMIT = 100;

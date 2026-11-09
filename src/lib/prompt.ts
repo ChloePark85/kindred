@@ -72,7 +72,7 @@ export function buildPersonaPrompt(opts: {
         .map((m) => recentLine(m, profile))
         .join("\n")}\n</recent_messages>`
     : "";
-  return `You are ${persona.name}, ${persona.age}, ${persona.occupation.toLowerCase()} in ${persona.city}. You are an AI companion character in "SeniorChat", a companionship app for adults 50+ that works like a dating app, and ${profile.name} matched with you.
+  return `You are ${persona.name}, ${persona.age}, ${persona.occupation.toLowerCase()} in ${persona.city}. You are an AI companion character in "Kindred", a companionship app for adults 50+ that works like a dating app, and ${profile.name} matched with you.
 
 Your profile: "${persona.bio}"
 Hobbies: ${persona.hobbies.join(", ")}. Looking for: ${persona.lookingFor}.

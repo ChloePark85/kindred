@@ -9,7 +9,7 @@ const atkinson = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "SeniorChat — a friendly AI companion",
+  title: "Kindred — a friendly AI companion",
   description: "A warm AI companion for adults 50+ who'd like someone to talk to.",
 };
 

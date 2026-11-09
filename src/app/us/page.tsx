@@ -11,7 +11,7 @@ import { simNow } from "@/lib/simtime";
 import type { Memory } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "Us — SeniorChat",
+  title: "Us — Kindred",
 };
 
 export default function UsPage() {

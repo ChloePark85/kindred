@@ -9,7 +9,7 @@ import { getStage } from "@/lib/closeness";
 import { requireProfile } from "@/lib/session";
 
 export const metadata: Metadata = {
-  title: "Meet — SeniorChat",
+  title: "Meet — Kindred",
 };
 
 export default function DiscoverPage() {

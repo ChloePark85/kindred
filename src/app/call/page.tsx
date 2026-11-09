@@ -6,7 +6,7 @@ import { getStage } from "@/lib/closeness";
 import { requireOnboarded } from "@/lib/session";
 
 export const metadata: Metadata = {
-  title: "Call — SeniorChat",
+  title: "Call — Kindred",
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
