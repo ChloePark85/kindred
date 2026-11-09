@@ -10,7 +10,7 @@ async function synthesize(text: string, voiceId: string): Promise<string | null>
       {
         method: "POST",
         headers: { "xi-api-key": apiKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
-        body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+        body: JSON.stringify({ text, model_id: "eleven_v4" }),
         cache: "no-store",
       },
     );
