@@ -105,6 +105,8 @@ export async function POST(request: Request) {
       extraInstructions = "",
       /** For the first greeting: skip storing if a message arrived meanwhile (e.g. from another tab). */
       onlyIfStillEmpty = false,
+      /** Off for delayed replies: those messages were remembered when they were sent. */
+      extractMemories = true,
     ): Promise<Message | null> {
       const conversation = history.filter((m) => m.kind !== "busy_note").slice(-HISTORY_LIMIT);
       const lastPartner = conversation.findLastIndex((m) => m.role === "partner");
@@ -140,7 +142,7 @@ export async function POST(request: Request) {
       }
       const saved = await store("partner", "chat", text);
 
-      if (unanswered.length > 0) {
+      if (extractMemories && unanswered.length > 0) {
         after(async () => {
           try {
             await extractAndStoreMemories({
@@ -198,7 +200,7 @@ export async function POST(request: Request) {
       const backFrom = owed
         ? `\n\nWhile ${profile.name} was writing, the app told them: "${owed.content}" You are only now reading their messages. Say in a few natural words why you're answering late (e.g. back from what you were doing, just woke up, only now saw it), then answer everything they wrote.`
         : `\n\nYou were away for a little while and are only now reading ${profile.name}'s messages. You may say in a few words that you're back, then answer everything they wrote.`;
-      const saved = (await reply(recent, stage, item, backFrom))!;
+      const saved = (await reply(recent, stage, item, backFrom, false, false))!;
       return Response.json({ messages: [saved], status, stage: stageInfo(stage) });
     }
 
@@ -206,9 +208,34 @@ export async function POST(request: Request) {
     // Counted after storing, so this message can be the one that moves the relationship up a stage.
     const stage = await currentStage();
 
+    /**
+     * When the partner can't answer now, remember what the user said right away: the
+     * later answer may come from another route ("Next day"), and "tomorrow" must be
+     * resolved against today's date.
+     */
+    const rememberNow = () =>
+      after(async () => {
+        try {
+          await extractAndStoreMemories({
+            supabase,
+            userId: user.id,
+            partnerId: persona.id,
+            userName: profile.name,
+            userMessage: body.message,
+            partnerReply: "(no reply yet)",
+            simDate: sim.date,
+            weekday: sim.weekday,
+            sourceMessageId: userMessage.id,
+          });
+        } catch (e) {
+          console.error("Memory extraction failed", e);
+        }
+      });
+
     if (awaitingDelayedReply(recent)) {
       const owed = recent.findLast((m) => m.kind === "busy_note");
       const waitMs = owed?.reply_at ? msUntil(profile, owed.reply_at) : 0;
+      rememberNow();
       return Response.json({ messages: [userMessage], status, stage: stageInfo(stage), queued: true, replyAfterMs: clientDelay(waitMs) });
     }
 
@@ -217,6 +244,7 @@ export async function POST(request: Request) {
     if (delay) {
       const note = delay.note;
       const noteMessage = await store("partner", "busy_note", note, simInstantIn(profile, delay.minutes));
+      rememberNow();
       const replyAfterMs = clientDelay(delay.minutes * 60_000);
       return Response.json({
         messages: [userMessage, noteMessage],

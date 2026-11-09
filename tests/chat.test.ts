@@ -14,16 +14,17 @@ vi.mock("@/lib/claude", () => ({ generateText: vi.fn(async () => "Sorry, just go
 vi.mock("@/lib/memories", async (orig) => ({
   ...(await orig<typeof import("@/lib/memories")>()),
   getRelevantMemories: async () => [],
-  extractAndStoreMemories: async () => {},
+  extractAndStoreMemories: vi.fn(async () => []),
 }));
 vi.mock("@/lib/relationship", async (orig) => {
   const real = await orig<typeof import("@/lib/relationship")>();
   return { ...real, getStage: async () => ({ stage: real.STAGES[0] }) };
 });
-vi.mock("next/server", () => ({ after: () => {} }));
+vi.mock("next/server", () => ({ after: (fn: () => unknown) => void fn() }));
 
 const { POST } = await import("@/app/api/chat/route");
 const { generateText } = await import("@/lib/claude");
+const { extractAndStoreMemories } = await import("@/lib/memories");
 
 const profile = { id: "u1", name: "Susan", partner_id: "walter", day_offset: 0, timezone: "UTC", interests: [] };
 const msg = (over: object) => ({ id: "m", user_id: "u1", partner_id: "walter", sim_date: "2026-11-09", created_at: "2026-11-09T10:00:00Z", ...over });
@@ -44,7 +45,10 @@ const req = (body: object) =>
 const allDay = (busy: boolean) => [{ start: "00:00", end: "23:59", activity: busy ? "Fixing a clock" : "Free", busy }];
 
 describe("POST /api/chat", () => {
-  beforeEach(() => vi.mocked(generateText).mockClear());
+  beforeEach(() => {
+    vi.mocked(generateText).mockClear();
+    vi.mocked(extractAndStoreMemories).mockClear();
+  });
 
   it("waits for the partner to be free before replying", async () => {
     state.items = allDay(false);
@@ -68,6 +72,7 @@ describe("POST /api/chat", () => {
     expect(body.messages).toHaveLength(1);
     const system = vi.mocked(generateText).mock.calls[0][0].system;
     expect(system).toContain("Walter has gone to sleep");
+    expect(extractAndStoreMemories).not.toHaveBeenCalled(); // remembered when it was sent
   });
 
   it("stores a busy note with the time the partner will be free", async () => {
@@ -78,5 +83,7 @@ describe("POST /api/chat", () => {
     const note = db.calls.find((c) => c.op === "insert" && (c.payload as { kind: string }).kind === "busy_note")!;
     expect(Date.parse((note.payload as { reply_at: string }).reply_at)).toBeGreaterThan(Date.now());
     expect(generateText).not.toHaveBeenCalled();
+    // Remembered right away, so "tomorrow" means tomorrow from today.
+    expect(vi.mocked(extractAndStoreMemories).mock.calls[0][0]).toMatchObject({ userMessage: "Good night!" });
   });
 });
