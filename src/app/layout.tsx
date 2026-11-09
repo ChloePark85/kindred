@@ -9,8 +9,9 @@ const atkinson = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "Kindred — a friendly AI companion",
-  description: "A warm AI companion for adults 50+ who'd like someone to talk to.",
+  title: "Kindred — AI companions with lives of their own",
+  description:
+    "For adults 50+: match with AI companions who live their own day, remember what you share, call you first, and nudge you back to the people you love. Always honest that they're AI.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

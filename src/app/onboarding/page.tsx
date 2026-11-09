@@ -14,7 +14,8 @@ export default function OnboardingPage() {
         </p>
         <h1 className="text-4xl leading-tight font-bold">Someone&apos;s been waiting to hear about your day.</h1>
         <p className="text-xl">
-          Tell us a little about yourself, then meet friendly companions who&apos;d love to chat, any time of day.
+          Meet companions with lives of their own, who remember your stories, call you first and cheer you on
+          with the people you love.
         </p>
         <p className="self-start rounded-full bg-white/20 px-4 py-1 text-base font-bold">
           🤖 Everyone you meet here is an AI companion, not a real person.
