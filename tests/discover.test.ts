@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSupabase, type Call } from "./fakeSupabase";
 
-const session = vi.hoisted(() => ({ current: null as unknown }));
+const session = vi.hoisted(() => ({ current: null as unknown, demo: false }));
+vi.mock("@/lib/demo", async () => ({
+  ...(await vi.importActual<typeof import("@/lib/demoConfig")>("@/lib/demoConfig")),
+  isDemo: async () => session.demo,
+}));
 vi.mock("@/lib/supabase/server", () => ({ getSession: async () => session.current }));
 // Walter is free all day in these tests, so a like is answered within minutes.
 vi.mock("@/lib/schedule", () => ({
@@ -27,6 +31,16 @@ const req = (body: unknown) => new Request("http://test/api/discover", { method:
 describe("POST /api/discover", () => {
   beforeEach(() => {
     session.current = null;
+    session.demo = false;
+  });
+
+  it("in demo mode, answers a like within seconds", async () => {
+    session.demo = true;
+    const db = withDb([]);
+    await POST(req({ partnerId: "james", action: "like" }));
+    const upsert = db.calls.find((c) => c.op === "upsert")!;
+    const decideIn = Date.parse((upsert.payload as { decide_at: string }).decide_at) - Date.now();
+    expect(decideIn).toBeLessThanOrEqual(10_000);
   });
 
   it("never turns a match, a pending like or an answer into a pass", async () => {

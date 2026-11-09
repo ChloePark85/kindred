@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { availability, likeDecisionMinutes, simInstantIn } from "@/lib/availability";
+import { DEMO, isDemo } from "@/lib/demo";
 import { settleLikes } from "@/lib/likes";
 import { getPersona } from "@/lib/personas";
 import { getOrCreateSchedule } from "@/lib/schedule";
@@ -67,10 +68,14 @@ export async function POST(request: Request) {
 
   if (existing?.status !== "pending") {
     // The partner looks at the like when they're free: soon, after their current busy block, or in the morning.
-    const sim = simNow(profile);
-    const schedule = await getOrCreateSchedule(supabase, user.id, persona, sim.date, sim.weekday);
+    // (Demo mode: a few seconds, whatever their day looks like.)
     const firstLike = !rows?.some((r) => r.status === "matched" || r.status === "pending");
-    const minutes = likeDecisionMinutes(availability(schedule, sim.time), firstLike, Math.random());
+    let minutes: number = DEMO.likeMinutes;
+    if (!(await isDemo())) {
+      const sim = simNow(profile);
+      const schedule = await getOrCreateSchedule(supabase, user.id, persona, sim.date, sim.weekday);
+      minutes = likeDecisionMinutes(availability(schedule, sim.time), firstLike, Math.random());
+    }
     const { error } = await supabase
       .from("matches")
       .upsert(
@@ -88,7 +93,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { pending, decided } = await settleLikes(supabase, user.id, profile);
+  const { pending, decided } = await settleLikes(supabase, user.id, profile, { demo: await isDemo() });
   const mine = pending.find((p) => p.partnerId === persona.id);
   return Response.json({ pending: mine ?? null, decided });
 }
@@ -97,7 +102,7 @@ export async function GET() {
   const { supabase, user, profile } = await getSession();
   if (!user || !profile) return Response.json({ error: SIGN_IN_AGAIN }, { status: 401 });
   try {
-    return Response.json(await settleLikes(supabase, user.id, profile));
+    return Response.json(await settleLikes(supabase, user.id, profile, { demo: await isDemo() }));
   } catch (e) {
     console.error("Settling likes failed", e);
     return Response.json({ error: "Something went wrong. Please try again." }, { status: 500 });
@@ -117,7 +122,7 @@ export async function PUT() {
     .maybeSingle();
   if (error) return Response.json({ error: "We couldn't move to the next day. Please try again." }, { status: 500 });
   try {
-    return Response.json(await settleLikes(supabase, user.id, updated ?? profile));
+    return Response.json(await settleLikes(supabase, user.id, updated ?? profile, { demo: await isDemo() }));
   } catch (e) {
     console.error("Settling likes failed", e);
     return Response.json({ error: "Something went wrong. Please try again." }, { status: 500 });

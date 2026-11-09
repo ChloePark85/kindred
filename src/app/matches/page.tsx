@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { PartnerPhoto } from "@/components/PartnerPhoto";
 import { getPersona, type Persona } from "@/lib/personas";
+import { isDemo } from "@/lib/demo";
 import { settleLikes } from "@/lib/likes";
 import { getStage, type Stage } from "@/lib/relationship";
 import { requireProfile } from "@/lib/session";
@@ -36,7 +37,7 @@ export default function MatchesPage() {
 async function MatchesContent() {
   const { supabase, user, profile, persona: wasOpen } = await requireProfile();
   // Partners whose time has come answer the user's likes now; a yes becomes the open partner.
-  const { decided, pending } = await settleLikes(supabase, user.id, profile);
+  const { decided, pending } = await settleLikes(supabase, user.id, profile, { demo: await isDemo() });
   const lastYes = decided.findLast((d) => d.status === "matched");
   const openPersona = lastYes ? (getPersona(lastYes.partnerId) ?? wasOpen) : wasOpen;
 

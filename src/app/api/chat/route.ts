@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { awaitingDelayedReply, partnerStatus } from "@/app/chat/chat-helpers";
 import { availability, msUntil, replyDelay, simInstantIn } from "@/lib/availability";
+import { DEMO, isDemo } from "@/lib/demo";
 import { generateText } from "@/lib/claude";
 import { extractAndStoreMemories, getRelevantMemories } from "@/lib/memories";
 import { relabelCallTranscript, requestedPartnerId, resolvePartner } from "@/lib/partner";
@@ -11,7 +12,8 @@ import { buildPersonaPrompt } from "@/lib/prompt";
 import { currentItem, getOrCreateSchedule } from "@/lib/schedule";
 import { simNow } from "@/lib/simtime";
 import { getSession } from "@/lib/supabase/server";
-import type { Message, MessageKind, MessageRole, ScheduleItem } from "@/lib/types";
+import type { Persona } from "@/lib/personas";
+import type { Message, MessageKind, MessageRole, Schedule, ScheduleItem } from "@/lib/types";
 
 /**
  * POST /api/chat
@@ -35,6 +37,19 @@ const Body = z.union([
 const HISTORY_LIMIT = 20;
 /** Longest wait the open chat page keeps a timer for; later replies arrive on the next visit or "Next day". */
 const MAX_CLIENT_WAIT_MS = 6 * 60 * 60_000;
+
+/**
+ * Demo mode: the first message after matching finds the partner busy for a few
+ * seconds (with something from their real day), so "they live their own life"
+ * shows up on cue; after that they answer right away.
+ */
+function demoDelay(persona: Persona, schedule: Schedule, time: string, history: Message[]) {
+  if (history.some((m) => m.kind === "busy_note")) return null;
+  const activity = schedule.items.find((i) => i.busy)?.activity ?? DEMO.busyFallback;
+  const [h, m] = time.split(":").map(Number);
+  const soon = `${String((h + Math.floor((m + 1) / 60)) % 24).padStart(2, "0")}:${String((m + 1) % 60).padStart(2, "0")}`;
+  return replyDelay(persona, { state: "busy", until: soon, minutes: DEMO.busyMinutes, activity }, 0);
+}
 
 /** How long the page should wait before asking for the reply again (null: don't wait on this page). */
 function clientDelay(ms: number) {
@@ -74,7 +89,21 @@ export async function POST(request: Request) {
 
     const sim = simNow(profile);
     const schedule = await getOrCreateSchedule(supabase, user.id, persona, sim.date, sim.weekday);
-    const item = currentItem(schedule, sim.time);
+    // Plan tomorrow's day ahead of time, so "Next day" doesn't wait for it.
+    after(async () => {
+      const tomorrow = simNow({ ...profile, day_offset: profile.day_offset + 1 });
+      await getOrCreateSchedule(supabase, user.id, persona, tomorrow.date, tomorrow.weekday).catch((e) =>
+        console.error("Planning tomorrow failed", e),
+      );
+    });
+
+    const demo = await isDemo();
+    const scheduled = currentItem(schedule, sim.time);
+    // Demo mode keeps the partner around (not asleep, not mid-nap) so each scene happens on cue.
+    const item: ScheduleItem | null =
+      demo && (!scheduled || scheduled.busy)
+        ? { start: sim.time, end: sim.time, activity: "Taking it easy at home", busy: false }
+        : scheduled;
     const status = partnerStatus(persona, item);
 
     const { data: recentRows, error: loadError } = await supabase
@@ -240,7 +269,9 @@ export async function POST(request: Request) {
     }
 
     // Partners live their own day: busy, asleep, or just not looking at their phone yet.
-    const delay = replyDelay(persona, availability(schedule, sim.time), Math.random());
+    const delay = demo
+      ? demoDelay(persona, schedule, sim.time, recent)
+      : replyDelay(persona, availability(schedule, sim.time), Math.random());
     if (delay) {
       const note = delay.note;
       const noteMessage = await store("partner", "busy_note", note, simInstantIn(profile, delay.minutes));

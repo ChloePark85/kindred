@@ -30,22 +30,25 @@ function dayOf(instant: number, profile: Pick<Profile, "timezone">) {
  * clock), and returns what was just decided plus what is still pending.
  * Each pending row is decided once: the update only applies while it is still pending.
  * A yes makes that partner the open one, as liking used to.
+ * In demo mode the answers are scripted: first a yes, then one gentle no, then yes.
  */
 export async function settleLikes(
   supabase: SupabaseClient,
   userId: string,
   profile: Pick<Profile, "day_offset" | "timezone" | "interests">,
-  roll: () => number = Math.random,
+  opts: { roll?: () => number; demo?: boolean } = {},
 ): Promise<{ decided: DecidedLike[]; pending: PendingLike[] }> {
+  const roll = opts.roll ?? Math.random;
   const { data, error } = await supabase
     .from("matches")
     .select("partner_id, status, decide_at")
     .eq("user_id", userId)
-    .in("status", ["pending", "matched"]);
+    .in("status", ["pending", "matched", "declined"]);
   if (error) throw error;
   const rows = (data ?? []) as { partner_id: string; status: string; decide_at: string | null }[];
 
   let hasMatch = rows.some((r) => r.status === "matched");
+  let hasDecline = rows.some((r) => r.status === "declined");
   const decided: DecidedLike[] = [];
   const pending: PendingLike[] = [];
   const now = Date.now();
@@ -66,7 +69,9 @@ export async function settleLikes(
       });
       continue;
     }
-    const yes = acceptsLike({ hasMatch, shared: sharedInterests(profile.interests ?? [], persona), roll: roll() });
+    const yes = opts.demo
+      ? !hasMatch || hasDecline
+      : acceptsLike({ hasMatch, shared: sharedInterests(profile.interests ?? [], persona), roll: roll() });
     const status = yes ? "matched" : "declined";
     const { data: updated, error: updateError } = await supabase
       .from("matches")
@@ -77,6 +82,7 @@ export async function settleLikes(
       .select("partner_id");
     if (updateError) throw updateError;
     if (!updated?.length) continue; // decided by another request meanwhile
+    if (!yes) hasDecline = true;
     if (yes) {
       hasMatch = true;
       const { error: openError } = await supabase.from("profiles").update({ partner_id: persona.id }).eq("id", userId);

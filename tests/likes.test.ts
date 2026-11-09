@@ -17,7 +17,7 @@ function db(rows: { partner_id: string; status: string; decide_at: string | null
 describe("settleLikes", () => {
   it("leaves likes alone until the partner's time comes", async () => {
     const { client, calls } = db([{ partner_id: "walter", status: "pending", decide_at: future }]);
-    const { decided, pending } = await settleLikes(client, "u1", profile, () => 0);
+    const { decided, pending } = await settleLikes(client, "u1", profile, { roll: () => 0 });
     expect(decided).toEqual([]);
     expect(pending[0]).toMatchObject({ partnerId: "walter" });
     expect(pending[0].waitMs).toBeGreaterThan(2 * 60 * 60_000);
@@ -26,7 +26,7 @@ describe("settleLikes", () => {
 
   it("says yes to a first like and opens that partner", async () => {
     const { client, calls } = db([{ partner_id: "walter", status: "pending", decide_at: past }]);
-    const { decided } = await settleLikes(client, "u1", profile, () => 0.99);
+    const { decided } = await settleLikes(client, "u1", profile, { roll: () => 0.99 });
     expect(decided).toEqual([{ partnerId: "walter", status: "matched" }]);
     const update = calls.find((c) => c.table === "matches" && c.op === "update")!;
     expect(update.payload).toMatchObject({ status: "matched" });
@@ -39,13 +39,28 @@ describe("settleLikes", () => {
       { partner_id: "walter", status: "matched", decide_at: null },
       { partner_id: "james", status: "pending", decide_at: past },
     ]);
-    const { decided } = await settleLikes(client, "u1", profile, () => 0.99);
+    const { decided } = await settleLikes(client, "u1", profile, { roll: () => 0.99 });
     expect(decided).toEqual([{ partnerId: "james", status: "declined" }]);
     expect(calls.some((c) => c.table === "profiles")).toBe(false);
   });
 
   it("doesn't report a like another request already decided", async () => {
     const { client } = db([{ partner_id: "walter", status: "pending", decide_at: past }], []);
-    expect((await settleLikes(client, "u1", profile, () => 0)).decided).toEqual([]);
+    expect((await settleLikes(client, "u1", profile, { roll: () => 0 })).decided).toEqual([]);
+  });
+
+  it("in demo mode, answers first yes, then one no, then yes", async () => {
+    const pendingNow = (id: string) => ({ partner_id: id, status: "pending", decide_at: past });
+    const run = async (rows: { partner_id: string; status: string; decide_at: string | null }[]) =>
+      (await settleLikes(db(rows).client, "u1", profile, { demo: true, roll: () => 0 })).decided.map((d) => d.status);
+    expect(await run([pendingNow("walter")])).toEqual(["matched"]);
+    expect(await run([{ partner_id: "walter", status: "matched", decide_at: null }, pendingNow("james")])).toEqual(["declined"]);
+    expect(
+      await run([
+        { partner_id: "walter", status: "matched", decide_at: null },
+        { partner_id: "james", status: "declined", decide_at: null },
+        pendingNow("tom"),
+      ]),
+    ).toEqual(["matched"]);
   });
 });

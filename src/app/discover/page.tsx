@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
 import { DiscoverDeck } from "@/components/discover/DiscoverDeck";
+import { isDemo } from "@/lib/demo";
 import { settleLikes } from "@/lib/likes";
 import { getPersona, personasFor } from "@/lib/personas";
 import { getStage } from "@/lib/relationship";
@@ -22,7 +23,7 @@ export default function DiscoverPage() {
 async function DiscoverContent() {
   const { supabase, user, profile, persona: openPersona } = await requireProfile();
   // Partners whose time has come answer the user's likes now.
-  const { decided, pending } = await settleLikes(supabase, user.id, profile);
+  const { decided, pending } = await settleLikes(supabase, user.id, profile, { demo: await isDemo() });
   const lastYes = decided.findLast((d) => d.status === "matched");
   const persona = lastYes ? (getPersona(lastYes.partnerId) ?? openPersona) : openPersona;
   const [{ data: seen }, stage] = await Promise.all([

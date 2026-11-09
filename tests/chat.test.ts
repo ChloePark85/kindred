@@ -4,6 +4,11 @@ import { fakeSupabase, type Call } from "./fakeSupabase";
 const state = vi.hoisted(() => ({
   session: null as unknown,
   items: [] as { start: string; end: string; activity: string; busy: boolean }[],
+  demo: false,
+}));
+vi.mock("@/lib/demo", async () => ({
+  ...(await vi.importActual<typeof import("@/lib/demoConfig")>("@/lib/demoConfig")),
+  isDemo: async () => state.demo,
 }));
 vi.mock("@/lib/supabase/server", () => ({ getSession: async () => state.session }));
 vi.mock("@/lib/schedule", async (orig) => ({
@@ -46,6 +51,7 @@ const allDay = (busy: boolean) => [{ start: "00:00", end: "23:59", activity: bus
 
 describe("POST /api/chat", () => {
   beforeEach(() => {
+    state.demo = false;
     vi.mocked(generateText).mockClear();
     vi.mocked(extractAndStoreMemories).mockClear();
   });
@@ -85,5 +91,26 @@ describe("POST /api/chat", () => {
     expect(generateText).not.toHaveBeenCalled();
     // Remembered right away, so "tomorrow" means tomorrow from today.
     expect(vi.mocked(extractAndStoreMemories).mock.calls[0][0]).toMatchObject({ userMessage: "Good night!" });
+  });
+
+  it("in demo mode, finds the partner busy on the first message only, briefly", async () => {
+    state.demo = true;
+    state.items = [
+      { start: "00:00", end: "12:00", activity: "Free", busy: false },
+      { start: "12:00", end: "23:59", activity: "Workshop: fixing a mantel clock", busy: true },
+    ];
+    let body = await (await POST(req({ message: "Hi Walter!" }))).json();
+    expect(body.busy).toBe(true);
+    expect(body.note).toContain("Workshop: fixing a mantel clock".replace("W", "w"));
+    expect(body.replyAfterMs).toBeLessThan(30_000);
+
+    withDb([
+      msg({ role: "user", kind: "chat", content: "Hi Walter!" }),
+      msg({ role: "partner", kind: "busy_note", content: "busy", reply_at: new Date(Date.now() - 1).toISOString() }),
+      msg({ role: "partner", kind: "chat", content: "Back now!" }),
+    ]);
+    body = await (await POST(req({ message: "How was the workshop?" }))).json();
+    expect(body.busy).toBeUndefined();
+    expect(body.messages.at(-1).role).toBe("partner");
   });
 });
