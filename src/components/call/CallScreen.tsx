@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ConversationProvider, useConversation, type DisconnectionDetails } from "@elevenlabs/react";
 import type { Persona } from "@/lib/personas";
 import { PartnerPhoto } from "@/components/PartnerPhoto";
+import { withoutVoiceTags } from "@/lib/speech";
 import { Captions, type CaptionLine } from "@/components/call/Captions";
 import { VoiceMessagePlayer } from "@/components/call/VoiceMessagePlayer";
 import { useRingtone } from "@/components/call/useRingtone";
@@ -141,7 +142,8 @@ function CallPanel({ persona, userName, incoming }: { persona: Persona; userName
       setPhase("live");
     },
     onMessage: ({ message, role }) => {
-      const text = message.trim();
+      // The expressive voice model's delivery cues ("[warm]") are for the voice, not the captions.
+      const text = (role === "agent" ? withoutVoiceTags(message) : message).trim();
       if (!text) return;
       const line: CaptionLine = { role: role === "agent" ? "partner" : "user", text };
       linesRef.current = [...linesRef.current, line];

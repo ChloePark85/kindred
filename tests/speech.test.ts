@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forSpeech } from "@/lib/speech";
+import { forSpeech, withoutVoiceTags } from "@/lib/speech";
 
 describe("forSpeech", () => {
   it.each([
@@ -12,4 +12,12 @@ describe("forSpeech", () => {
   ])("%j -> %j", (input, expected) => {
     expect(forSpeech(input)).toBe(expected);
   });
+});
+
+describe("withoutVoiceTags", () => {
+  it.each([
+    ["[warm] Ten o'clock, so you've got time.", "Ten o'clock, so you've got time."],
+    ["[gentle] No, Susan. [laughs softly] I'm an AI.", "No, Susan. I'm an AI."],
+    ["The [1920s] clock stays", "The [1920s] clock stays"],
+  ])("%j -> %j", (input, expected) => expect(withoutVoiceTags(input).trim()).toBe(expected));
 });
